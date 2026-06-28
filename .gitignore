@@ -1,0 +1,31 @@
+node_modules/
+out/
+dist/
+release/
+*.log
+.DS_Store
+.vite/
+
+# Bundled native binaries are large and acquired/built separately.
+resources/mac-arm64/whisper-cli
+resources/mac-arm64/ffmpeg
+resources/mac-x64/whisper-cli
+resources/mac-x64/ffmpeg
+resources/win-x64/whisper-cli.exe
+resources/win-x64/ffmpeg.exe
+# whisper.cpp's prebuilt Windows release ships DLLs (whisper.dll, ggml*.dll) next to
+# the exe — keep those local too. (A from-source static /MT build needs none.)
+resources/win-x64/*.dll
+resources/**/meetvox-syscap
+native/meetvox-syscap/.build/
+
+# Downloaded model (1 GB, fetched at runtime)
+*.bin
+/.git/
+
+# macOS zip artifact
+__MACOSX/
+
+# Temp .iconset used to build icon.icns (the .icns/.ico/.png are committed)
+/build/icon.iconset/
+meetvox.zip

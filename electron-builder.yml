@@ -1,0 +1,70 @@
+appId: app.meetvox
+productName: Meetvox
+copyright: Copyright © 2026 Meetvox
+
+directories:
+  output: release
+  buildResources: build
+
+files:
+  - out/**/*
+  - package.json
+
+# Bundled native binaries (whisper-cli, ffmpeg, meetvox-syscap) ship as plain files
+# at <resourcesPath>/<platform-dir>/… so binaries/resolve.ts can spawn them.
+# NOTE: electron-builder's ${platform} macro expands to "darwin"/"win32", but resolve.ts
+# and the resources/ folders use "mac"/"win". extraResources is therefore declared
+# PER-PLATFORM below (under mac:/win:) with the correct folder names. A top-level
+# ${platform}-${arch} would resolve to resources/darwin-arm64 (nonexistent) and ship an
+# app with NO binaries.
+
+# naudiodon2 is a native addon and must stay unpacked from the asar to load.
+asarUnpack:
+  - node_modules/naudiodon2/**
+
+mac:
+  category: public.app-category.productivity
+  icon: build/icon.icns
+  extraResources:
+    - from: resources/mac-${arch}
+      to: mac-${arch}
+      filter: ['**/*']
+    # Menu-bar (Tray) template icon — resolved at <resourcesPath>/build/ by tray.ts.
+    - from: build
+      to: build
+      filter: ['tray-Template*.png']
+  target:
+    - dmg
+  hardenedRuntime: true
+  gatekeeperAssess: false
+  entitlements: build/entitlements.mac.plist
+  entitlementsInherit: build/entitlements.mac.plist
+  extendInfo:
+    NSMicrophoneUsageDescription: Meetvox records your microphone for meeting capture.
+    # System audio is captured via the Core Audio process tap (meetvox-syscap); macOS
+    # shows the System Audio Recording permission prompt on first record.
+    NSAudioCaptureUsageDescription: Meetvox records your computer's audio output to capture the other side of your meetings.
+
+dmg:
+  title: Meetvox
+
+win:
+  icon: build/icon.ico
+  extraResources:
+    - from: resources/win-${arch}
+      to: win-${arch}
+      filter: ['**/*']
+    # Tray icon — resolved at <resourcesPath>/build/ by tray.ts (not template-tinted on Windows).
+    - from: build
+      to: build
+      filter: ['tray-Template*.png']
+  target:
+    - nsis
+  # whisper-cli is built CPU-only and statically linked, so no VC++ runtime is
+  # strictly required. If a future GPU build needs it, bundle vcredist via
+  # nsis.include and silently install in the installer script.
+
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
