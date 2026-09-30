@@ -13,6 +13,7 @@
 import { spawn, type ChildProcessWithoutNullStreams } from 'child_process'
 import { SAMPLE_RATE, SYSTEM_CHANNELS, MAC_SYSTEM_AUDIO_ID } from '@shared/constants'
 import { pcmFloat32 } from './pcm'
+import { settleWithin, terminateProcess, QUIT_TIMEOUT_MS } from './teardown'
 import type { Platform } from '@shared/types'
 
 export type FrameHandler = (interleaved: Float32Array) => void
@@ -62,7 +63,9 @@ class MacSystemSource implements SystemSource {
     this.proc = null
     if (proc) {
       proc.stdout.removeAllListeners()
-      proc.kill('SIGTERM')
+      // SIGTERM, then SIGKILL if the helper is wedged in CoreAudio teardown — a bare
+      // SIGTERM that the process ignores would leak the syscap child and hold the tap.
+      await terminateProcess(proc)
     }
   }
 }
@@ -100,7 +103,9 @@ class PortAudioInputSource implements SystemSource {
   async stop(): Promise<void> {
     const io = this.io
     this.io = null
-    if (io) await new Promise<void>((resolve) => io.quit(resolve))
+    // Bound the PortAudio quit: its callback can stall indefinitely under load, and
+    // stop() runs on the main process — an unbounded wait freezes the window.
+    if (io) await settleWithin(new Promise<void>((resolve) => io.quit(resolve)), QUIT_TIMEOUT_MS)
   }
 }
 
