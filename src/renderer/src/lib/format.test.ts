@@ -1,4 +1,13 @@
-import { fmtClock, fmtDuration, fmtDate, fmtMeetingTime, groupByRecency } from './format'
+import { fmtClock, fmtDuration, fmtDate, fmtMeetingTime, groupByRecency, fmtBytes } from './format'
+
+describe('fmtBytes', () => {
+  test('gigabytes with two decimals', () => {
+    expect(fmtBytes(1_624_555_275)).toBe('1.62 GB')
+  })
+  test('whole megabytes under a gigabyte', () => {
+    expect(fmtBytes(574_041_195)).toBe('574 MB')
+  })
+})
 
 describe('fmtClock', () => {
   test('zero → 00:00:00', () => {

@@ -24,6 +24,7 @@ import {
 import { join } from 'path'
 import { tmpdir } from 'os'
 import { runPipeline, makeRunners } from './pipeline'
+import { transcribe as whisperTranscribe } from './whisper'
 import { buildTranscriptJson } from './format'
 
 const MEETING = process.env.MEETVOX_INT_MEETING
@@ -45,7 +46,11 @@ describe.skipIf(!ready)('runPipeline — real binaries end-to-end', () => {
     try {
       for (const c of chunks) copyFileSync(join(MEETING!, c), join(dir, c))
 
-      const runners = makeRunners({ ffmpegPath: FFMPEG!, whisperPath: WHISPER!, modelPath: MODEL! })
+      const runners = makeRunners({
+        ffmpegPath: FFMPEG!,
+        transcribe: (wavPath) =>
+          whisperTranscribe({ whisperPath: WHISPER!, modelPath: MODEL!, wavPath })
+      })
       const res = await runPipeline(dir, runners, { now: () => new Date('2026-06-09T14:10:35') })
 
       expect(existsSync(res.txtPath)).toBe(true)

@@ -52,10 +52,4 @@ export const SPEAKER_RIGHT = 'Other' // speaker2 (right channel = system)
 export const SPEAKER_NEUTRAL = 'Speaker'
 export const BLANK_MARKERS = ['[BLANK_AUDIO]', '[ Silence ]', '[silence]', '(silence)'] as const
 
-// --- model ---
-export const MODEL_FILENAME = 'ggml-large-v3-q5_0.bin'
-export const MODEL_URL =
-  'https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-large-v3-q5_0.bin'
-// Expected size in bytes (1.08 GB). Used for the progress bar + a sanity check.
-// SHA verification is wired in models/download.ts once the canonical hash is pinned.
-export const MODEL_EXPECTED_BYTES = 1_080_000_000
+// Models, engines and their sizes/hashes live in ./transcription.ts.

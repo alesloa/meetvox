@@ -3,8 +3,10 @@
 
 import type {
   DeviceList,
+  EngineTestResult,
   Gains,
   Levels,
+  LocalModelStatus,
   Meeting,
   MeetingAudio,
   ModelDownloadProgress,
@@ -18,7 +20,8 @@ import type {
   Summary,
   TranscribeProgress,
   TranscribeResult,
-  TranscriptEntry
+  TranscriptEntry,
+  TranscriptionSettings
 } from './types'
 
 /** Renderer → main, request/response (ipcRenderer.invoke). */
@@ -32,11 +35,14 @@ export const Commands = {
   transcribe: 'cmd:transcribe',
   importAudio: 'cmd:importAudio',
   openMeetingFolder: 'cmd:openMeetingFolder',
+  openScreenRecorder: 'cmd:openScreenRecorder',
   getRecordingsDir: 'cmd:getRecordingsDir',
   chooseRecordingsDir: 'cmd:chooseRecordingsDir',
   resetRecordingsDir: 'cmd:resetRecordingsDir',
   openRecordingsDir: 'cmd:openRecordingsDir',
-  retryModelDownload: 'cmd:retryModelDownload',
+  listLocalModels: 'cmd:listLocalModels',
+  downloadLocalModel: 'cmd:downloadLocalModel',
+  testTranscription: 'cmd:testTranscription',
   getPlatform: 'cmd:getPlatform',
   hasRecordings: 'cmd:hasRecordings',
   listMeetings: 'cmd:listMeetings',
@@ -90,13 +96,20 @@ export interface CommandMap {
   [Commands.transcribe]: { args: { meetingDir?: string }; result: TranscribeResult }
   [Commands.importAudio]: { args: { kind: 'file' | 'folder' }; result: { meetingDir: string } }
   [Commands.openMeetingFolder]: { args: { meetingDir?: string }; result: void }
+  // macOS only: opens the Cmd+Shift+5 screenshot / screen-recording toolbar.
+  [Commands.openScreenRecorder]: { args: void; result: void }
   // Recordings + transcripts storage folder. `isDefault` = using userData/recordings.
   [Commands.getRecordingsDir]: { args: void; result: RecordingsDir }
   // Opens a native folder picker; persists + switches live. null = user canceled.
   [Commands.chooseRecordingsDir]: { args: void; result: RecordingsDir | null }
   [Commands.resetRecordingsDir]: { args: void; result: RecordingsDir }
   [Commands.openRecordingsDir]: { args: void; result: void }
-  [Commands.retryModelDownload]: { args: void; result: void }
+  // On-device models: which are downloaded, and download one now (progress arrives
+  // on Events.modelDownloadProgress, tagged with the file).
+  [Commands.listLocalModels]: { args: void; result: LocalModelStatus[] }
+  [Commands.downloadLocalModel]: { args: { file: string }; result: void }
+  // Sends 1 s of silence through the given (unsaved) engine config. Never throws.
+  [Commands.testTranscription]: { args: TranscriptionSettings; result: EngineTestResult }
   [Commands.getPlatform]: { args: void; result: 'mac' | 'win' }
   [Commands.hasRecordings]: { args: void; result: boolean }
   [Commands.listMeetings]: { args: void; result: Meeting[] }

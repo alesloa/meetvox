@@ -17,6 +17,8 @@ import {
 } from 'lucide-react'
 import { Select } from '../components/Select'
 import { AiProviderCard } from '../components/AiProviderCard'
+import { Field, SectionTitle } from '../components/SettingsField'
+import { TranscriptionPanel } from '../components/TranscriptionPanel'
 import { useSettings } from '../app/settings'
 import { useTheme } from '../app/theme'
 import type { ThemePref } from '../app/theme'
@@ -112,39 +114,11 @@ export function SettingsView(): JSX.Element {
 
           {tab === 'general' && <GeneralPanel settings={settings} commit={commit} />}
           {tab === 'devices' && <DevicesPanel settings={settings} commit={commit} />}
-          {tab === 'transcription' && <TranscriptionPanel settings={settings} />}
+          {tab === 'transcription' && <TranscriptionPanel settings={settings} commit={commit} />}
           {tab === 'summary' && <SummaryPanel />}
           {tab === 'about' && <AboutPanel />}
         </div>
       </div>
-    </div>
-  )
-}
-
-// ── Reusable section primitives (theme tokens only) ─────────────────────────
-
-function SectionTitle({ children }: { children: React.ReactNode }): JSX.Element {
-  return (
-    <h2 className="mb-1 text-xs font-medium uppercase tracking-wide text-muted-foreground">
-      {children}
-    </h2>
-  )
-}
-
-function Field({
-  label,
-  hint,
-  children
-}: {
-  label: string
-  hint?: string
-  children: React.ReactNode
-}): JSX.Element {
-  return (
-    <div className="flex flex-col gap-1.5">
-      <label className="text-[13px] font-medium text-foreground">{label}</label>
-      {children}
-      {hint && <p className="text-xs text-muted-foreground">{hint}</p>}
     </div>
   )
 }
@@ -448,31 +422,6 @@ function GainRow({
   )
 }
 
-// ── Transcription ────────────────────────────────────────────────────────────
-
-function TranscriptionPanel({ settings }: { settings: Settings }): JSX.Element {
-  return (
-    <div className="max-w-xl space-y-6">
-      <div className="space-y-2">
-        <SectionTitle>Model</SectionTitle>
-        <div className="rounded-lg border border-border bg-card p-4">
-          <div className="flex items-center justify-between">
-            <div className="flex flex-col gap-0.5">
-              <span className="text-sm font-medium text-foreground">Whisper large-v3 (bundled)</span>
-              <span className="font-mono text-xs text-muted-foreground">{settings.modelFilename}</span>
-            </div>
-          </div>
-          <p className="mt-3 text-xs text-muted-foreground">
-            The bundled high-accuracy model. Downloaded once on first transcription and reused for
-            every meeting. Transcription runs fully on-device.
-          </p>
-        </div>
-        <p className="text-xs text-muted-foreground">Translation is not available; audio is transcribed in its original language.</p>
-      </div>
-    </div>
-  )
-}
-
 // ── AI Summary ───────────────────────────────────────────────────────────────
 
 function SummaryPanel(): JSX.Element {
@@ -585,7 +534,10 @@ function AboutPanel(): JSX.Element {
       </div>
       <div className="space-y-1 text-sm text-muted-foreground">
         <p>Local meeting recorder &amp; transcriber.</p>
-        <p>Records your mic and system audio, then transcribes on-device with Whisper.</p>
+        <p>
+          Records your mic and system audio, then transcribes it with Whisper, on this Mac or with
+          the engine you pick in Transcription settings.
+        </p>
       </div>
     </div>
   )

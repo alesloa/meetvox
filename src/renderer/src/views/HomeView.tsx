@@ -1,5 +1,14 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { Mic, Volume2, RefreshCw, FileText, FolderOpen, Loader2, AudioLines } from 'lucide-react'
+import {
+  Mic,
+  Volume2,
+  RefreshCw,
+  FileText,
+  FolderOpen,
+  Loader2,
+  AudioLines,
+  MonitorPlay
+} from 'lucide-react'
 import { Card } from '../components/Card'
 import { Select } from '../components/Select'
 import { VuMeter } from '../components/VuMeter'
@@ -8,7 +17,9 @@ import { RecordPill } from '../components/RecordPill'
 import { useMeetings } from '../app/meetings'
 import { useSettings } from '../app/settings'
 import { resolveDeviceSelection } from '../lib/deviceSelection'
-import { DEFAULT_INTERVAL_SEC, GAIN_DEFAULT, MODEL_FILENAME } from '@shared/constants'
+import { DEFAULT_INTERVAL_SEC, GAIN_DEFAULT } from '@shared/constants'
+import { findLocalModel } from '@shared/transcription'
+import { ipcErrorText } from '../lib/ipcError'
 import type {
   DeviceList,
   Levels,
@@ -213,15 +224,20 @@ export function HomeView(): JSX.Element {
       // Surface the freshly transcribed meeting in the sidebar/library without a reload.
       await refreshMeetings()
     } catch (e) {
-      setTranscribe({
-        phase: 'error',
-        message: e instanceof Error ? e.message : String(e),
-        chunkIndex: 0,
-        chunkCount: 0
-      })
-      setError(e instanceof Error ? e.message : String(e))
+      const message = ipcErrorText(e)
+      setTranscribe({ phase: 'error', message, chunkIndex: 0, chunkCount: 0 })
+      setError(message)
     }
   }, [refreshMeetings])
+
+  const onScreenRecord = useCallback(async () => {
+    setError(null)
+    try {
+      await window.meetvox.openScreenRecorder()
+    } catch (e) {
+      setError(ipcErrorText(e))
+    }
+  }, [])
 
   const controlsDisabled = recording || transcribing
   const systemHint =
@@ -345,7 +361,7 @@ export function HomeView(): JSX.Element {
           {model && !model.done && !model.error && (
             <div className="animate-fade-in rounded-lg border border-border bg-card p-3">
               <div className="mb-1.5 flex items-center justify-between text-xs text-muted-foreground">
-                <span>Downloading model ({MODEL_FILENAME})</span>
+                <span>Downloading {findLocalModel(model.file)?.label ?? model.file}</span>
                 <span className="font-mono tabular-nums">
                   {fmtBytes(model.receivedBytes)}
                   {model.totalBytes > 0 ? ` / ${fmtBytes(model.totalBytes)}` : ''}
@@ -397,15 +413,28 @@ export function HomeView(): JSX.Element {
 
       {/* Record bar — a fixed footer (shrink-0) so the scroll area above shrinks to
           fit and never collides with the pill. Always rendered, centered, so Record is
-          reachable in the welcome state too. */}
+          reachable in the welcome state too. Screen Record sits beside it (macOS only)
+          and stretches to the pill's height; it stays live while recording audio. */}
       <footer className="flex shrink-0 items-center justify-center border-t border-border/60 px-5 py-4">
-        <RecordPill
-          recording={recording}
-          transcribing={transcribing}
-          status={status}
-          elapsed={elapsed}
-          onToggle={onToggleRecord}
-        />
+        <div className="flex items-stretch gap-3">
+          <RecordPill
+            recording={recording}
+            transcribing={transcribing}
+            status={status}
+            elapsed={elapsed}
+            onToggle={onToggleRecord}
+          />
+          {platform === 'mac' && (
+            <button
+              onClick={onScreenRecord}
+              title="Open the macOS screen recording toolbar (⌘⇧5)"
+              className="no-drag flex items-center gap-1.5 rounded-full border border-border bg-card px-5 text-sm font-medium text-foreground transition hover:bg-accent active:scale-[0.98]"
+            >
+              <MonitorPlay className="h-4 w-4" />
+              Screen Record
+            </button>
+          )}
+        </div>
       </footer>
     </div>
   )

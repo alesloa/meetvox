@@ -1,8 +1,8 @@
 // Transcription pipeline — orchestrates the full per-meeting flow, a faithful port
 // of transcribe_meeting.py: process_meeting + merge_consecutive_speakers +
-// save_transcript(_json). External work (ffmpeg split, ffmpeg volumedetect,
-// whisper-cli) is injected via PipelineRunners so the orchestration is unit-testable
-// and the real binary paths are wired once in makeRunners().
+// save_transcript(_json). External work (ffmpeg split, ffmpeg volumedetect, the
+// transcription engine) is injected via PipelineRunners so the orchestration is
+// unit-testable; makeRunners() wires ffmpeg plus whichever engine settings chose.
 
 import { readdirSync, readFileSync, writeFileSync, mkdtempSync, rmSync } from 'fs'
 import { join, basename } from 'path'
@@ -10,7 +10,6 @@ import { tmpdir } from 'os'
 import { readWavDuration } from '../audio/wav'
 import { splitStereoToMono } from './splitChannels'
 import { getAudioLevel, isSilent } from './silence'
-import { transcribe as whisperTranscribe } from './whisper'
 import {
   sortEntries,
   mergeConsecutiveSpeakers,
@@ -31,19 +30,23 @@ export interface PipelineRunners {
 export interface PipelineOptions {
   onProgress?: (p: TranscribeProgress) => void
   now?: () => Date
+  /** Appended to progress messages, e.g. "Groq (whisper-large-v3-turbo)". */
+  engineLabel?: string
 }
 
-/** Build runners backed by the real bundled binaries. */
+function withEngine(message: string, label: string | undefined): string {
+  return label ? `${message} with ${label}` : message
+}
+
+/** Build runners: bundled ffmpeg for split/level, the chosen engine for words. */
 export function makeRunners(deps: {
   ffmpegPath: string
-  whisperPath: string
-  modelPath: string
+  transcribe: (wav: string) => Promise<string>
 }): PipelineRunners {
   return {
     split: (input, left, right) => splitStereoToMono(deps.ffmpegPath, input, left, right),
     level: (wav) => getAudioLevel(deps.ffmpegPath, wav),
-    transcribe: (wav) =>
-      whisperTranscribe({ whisperPath: deps.whisperPath, modelPath: deps.modelPath, wavPath: wav })
+    transcribe: deps.transcribe
   }
 }
 
@@ -80,7 +83,7 @@ export async function processMeeting(
 
       opts.onProgress?.({
         phase: 'running',
-        message: `Processing chunk ${i + 1}/${chunks.length}`,
+        message: withEngine(`Processing chunk ${i + 1}/${chunks.length}`, opts.engineLabel),
         chunkIndex: i + 1,
         chunkCount: chunks.length
       })
@@ -137,7 +140,7 @@ export async function runPipeline(
 
   opts.onProgress?.({
     phase: 'done',
-    message: `Transcribed ${merged.length} segments`,
+    message: withEngine(`Transcribed ${merged.length} segments`, opts.engineLabel),
     chunkIndex: 0,
     chunkCount: 0
   })

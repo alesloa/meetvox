@@ -5,8 +5,10 @@ import { contextBridge, ipcRenderer } from 'electron'
 import { Commands, Events, type TrayAction, type TrayView } from '@shared/ipc'
 import type {
   DeviceList,
+  EngineTestResult,
   Gains,
   Levels,
+  LocalModelStatus,
   Meeting,
   MeetingAudio,
   ModelDownloadProgress,
@@ -20,7 +22,8 @@ import type {
   Summary,
   TranscribeProgress,
   TranscribeResult,
-  TranscriptEntry
+  TranscriptEntry,
+  TranscriptionSettings
 } from '@shared/types'
 
 function on<T>(channel: string, cb: (payload: T) => void): () => void {
@@ -48,13 +51,18 @@ const api = {
     ipcRenderer.invoke(Commands.importAudio, { kind }),
   openMeetingFolder: (meetingDir?: string): Promise<void> =>
     ipcRenderer.invoke(Commands.openMeetingFolder, { meetingDir }),
+  openScreenRecorder: (): Promise<void> => ipcRenderer.invoke(Commands.openScreenRecorder),
   getRecordingsDir: (): Promise<RecordingsDir> => ipcRenderer.invoke(Commands.getRecordingsDir),
   chooseRecordingsDir: (): Promise<RecordingsDir | null> =>
     ipcRenderer.invoke(Commands.chooseRecordingsDir),
   resetRecordingsDir: (): Promise<RecordingsDir> =>
     ipcRenderer.invoke(Commands.resetRecordingsDir),
   openRecordingsDir: (): Promise<void> => ipcRenderer.invoke(Commands.openRecordingsDir),
-  retryModelDownload: (): Promise<void> => ipcRenderer.invoke(Commands.retryModelDownload),
+  listLocalModels: (): Promise<LocalModelStatus[]> => ipcRenderer.invoke(Commands.listLocalModels),
+  downloadLocalModel: (file: string): Promise<void> =>
+    ipcRenderer.invoke(Commands.downloadLocalModel, { file }),
+  testTranscription: (settings: TranscriptionSettings): Promise<EngineTestResult> =>
+    ipcRenderer.invoke(Commands.testTranscription, settings),
   getPlatform: (): Promise<'mac' | 'win'> => ipcRenderer.invoke(Commands.getPlatform),
   hasRecordings: (): Promise<boolean> => ipcRenderer.invoke(Commands.hasRecordings),
   listMeetings: (): Promise<Meeting[]> => ipcRenderer.invoke(Commands.listMeetings),

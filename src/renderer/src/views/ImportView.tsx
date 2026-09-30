@@ -2,7 +2,8 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { FileAudio, FolderOpen, Loader2 } from 'lucide-react'
 import { useMeetings } from '../app/meetings'
 import { useRouter } from '../app/router'
-import { MODEL_FILENAME } from '@shared/constants'
+import { findLocalModel } from '@shared/transcription'
+import { ipcErrorText } from '../lib/ipcError'
 import type { ModelDownloadProgress, TranscribeProgress } from '@shared/types'
 
 function fmtBytes(n: number): string {
@@ -73,7 +74,7 @@ export function ImportView(): JSX.Element {
         navigate({ type: 'openMeeting', dir: meetingDir })
       } catch (e) {
         if (!mountedRef.current) return
-        setError(e instanceof Error ? e.message : String(e))
+        setError(ipcErrorText(e))
         setBusy(false)
       }
     },
@@ -151,7 +152,7 @@ export function ImportView(): JSX.Element {
         {model && !model.done && !model.error && (
           <div className="animate-fade-in rounded-lg border border-border bg-card p-3">
             <div className="mb-1.5 flex items-center justify-between text-xs text-muted-foreground">
-              <span>Downloading model ({MODEL_FILENAME})</span>
+              <span>Downloading {findLocalModel(model.file)?.label ?? model.file}</span>
               <span className="font-mono tabular-nums">
                 {fmtBytes(model.receivedBytes)}
                 {model.totalBytes > 0 ? ` / ${fmtBytes(model.totalBytes)}` : ''}

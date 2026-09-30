@@ -14,7 +14,13 @@ import {
   secretIds,
   type SecretStorage
 } from './settings'
-import { DEFAULT_INTERVAL_SEC, GAIN_DEFAULT, MODEL_FILENAME } from '@shared/constants'
+import { DEFAULT_INTERVAL_SEC, GAIN_DEFAULT } from '@shared/constants'
+import {
+  DEFAULT_LOCAL_MODEL,
+  DEFAULT_SERVER_URL,
+  GROQ,
+  OPENAI
+} from '@shared/transcription'
 import type { Settings } from '@shared/types'
 
 let dir: string
@@ -38,7 +44,13 @@ describe('DEFAULT_SETTINGS', () => {
   test('is built from @shared/constants — no hardcoded numbers', () => {
     expect(DEFAULT_SETTINGS.intervalSec).toBe(DEFAULT_INTERVAL_SEC)
     expect(DEFAULT_SETTINGS.gains).toEqual({ mic: GAIN_DEFAULT, system: GAIN_DEFAULT })
-    expect(DEFAULT_SETTINGS.modelFilename).toBe(MODEL_FILENAME)
+    expect(DEFAULT_SETTINGS.transcription).toEqual({
+      engine: 'local',
+      localModel: DEFAULT_LOCAL_MODEL,
+      serverUrl: DEFAULT_SERVER_URL,
+      openaiModel: OPENAI.defaultModel,
+      groqModel: GROQ.defaultModel
+    })
     expect(DEFAULT_SETTINGS.theme).toBe('system')
     expect(DEFAULT_SETTINGS.sidebarCollapsed).toBe(false)
     expect(DEFAULT_SETTINGS.defaultMicId).toBeNull()
@@ -62,6 +74,45 @@ describe('recordingsDir persistence', () => {
   })
 })
 
+describe('transcription settings', () => {
+  test('a pre-engines settings.json keeps its on-device model choice', () => {
+    writeFileSync(
+      settingsPath(dir),
+      JSON.stringify({ modelFilename: 'ggml-large-v3-turbo-q5_0.bin' })
+    )
+    expect(loadSettings(dir).transcription.localModel).toBe('ggml-large-v3-turbo-q5_0.bin')
+  })
+
+  test('a legacy modelFilename is not written back after a save', () => {
+    writeFileSync(settingsPath(dir), JSON.stringify({ modelFilename: DEFAULT_LOCAL_MODEL }))
+    saveSettings(dir, { theme: 'dark' })
+    const raw = JSON.parse(readFileSync(settingsPath(dir), 'utf8'))
+    expect('modelFilename' in raw).toBe(false)
+  })
+
+  test('unknown engine or model in the file falls back to the defaults', () => {
+    writeFileSync(
+      settingsPath(dir),
+      JSON.stringify({ transcription: { engine: 'banana', localModel: 'ggml-nope.bin' } })
+    )
+    const t = loadSettings(dir).transcription
+    expect(t.engine).toBe('local')
+    expect(t.localModel).toBe(DEFAULT_LOCAL_MODEL)
+  })
+
+  test('a partial transcription save keeps the other engines config', () => {
+    saveSettings(dir, {
+      transcription: { ...DEFAULT_SETTINGS.transcription, serverUrl: 'http://10.0.0.5:8080' }
+    })
+    saveSettings(dir, {
+      transcription: { ...loadSettings(dir).transcription, engine: 'groq' }
+    })
+    const t = loadSettings(dir).transcription
+    expect(t.engine).toBe('groq')
+    expect(t.serverUrl).toBe('http://10.0.0.5:8080')
+  })
+})
+
 describe('loadSettings', () => {
   test('empty dir returns DEFAULT_SETTINGS', () => {
     expect(loadSettings(dir)).toEqual(DEFAULT_SETTINGS)
@@ -73,7 +124,7 @@ describe('loadSettings', () => {
     expect(s.intervalSec).toBe(60)
     // Untouched fields keep defaults.
     expect(s.gains).toEqual({ mic: GAIN_DEFAULT, system: GAIN_DEFAULT })
-    expect(s.modelFilename).toBe(MODEL_FILENAME)
+    expect(s.transcription).toEqual(DEFAULT_SETTINGS.transcription)
   })
 
   test('malformed JSON returns defaults without throwing', () => {

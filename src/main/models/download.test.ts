@@ -1,11 +1,18 @@
-import { describe, it, expect } from 'vitest'
-import { modelDir, modelFilePath, computeFraction, sizeLooksComplete } from './download'
-import { MODEL_FILENAME } from '@shared/constants'
+import { describe, it, expect, beforeEach, afterEach } from 'vitest'
+import { mkdtempSync, mkdirSync, rmSync, truncateSync, writeFileSync } from 'fs'
+import { join } from 'path'
+import { tmpdir } from 'os'
+import { modelDir, modelFilePath, computeFraction, isModelPresent, checkDownload } from './download'
+import { LOCAL_MODELS, type LocalModel } from '@shared/transcription'
+
+const TURBO = LOCAL_MODELS[0]
 
 describe('model paths — ~/.meetvox/models', () => {
-  it('builds the model dir and file path under the home dir', () => {
+  it('builds the model dir and the per-model file path under the home dir', () => {
     expect(modelDir('/home/user')).toBe('/home/user/.meetvox/models')
-    expect(modelFilePath('/home/user')).toBe(`/home/user/.meetvox/models/${MODEL_FILENAME}`)
+    expect(modelFilePath('/home/user', 'ggml-large-v3-turbo.bin')).toBe(
+      '/home/user/.meetvox/models/ggml-large-v3-turbo.bin'
+    )
   })
 })
 
@@ -21,14 +28,44 @@ describe('computeFraction — progress bar value', () => {
   })
 })
 
-describe('sizeLooksComplete — guards against truncated downloads', () => {
-  it('requires the written size to equal the advertised content length', () => {
-    expect(sizeLooksComplete(1000, 1000)).toBe(true)
-    expect(sizeLooksComplete(999, 1000)).toBe(false)
-    expect(sizeLooksComplete(0, 0)).toBe(false)
+describe('isModelPresent — exact size, so a truncated file never counts', () => {
+  let home: string
+  beforeEach(() => {
+    home = mkdtempSync(join(tmpdir(), 'meetvox-models-'))
+    mkdirSync(modelDir(home), { recursive: true })
   })
-  it('when content length is unknown, requires a non-trivial size', () => {
-    expect(sizeLooksComplete(600_000_000, -1)).toBe(true) // above the half-expected floor
-    expect(sizeLooksComplete(1234, -1)).toBe(false)
+  afterEach(() => rmSync(home, { recursive: true, force: true }))
+
+  it('is false when the file is missing', () => {
+    expect(isModelPresent(home, TURBO)).toBe(false)
+  })
+
+  it('is true only at the exact catalog size', () => {
+    const path = modelFilePath(home, TURBO.file)
+    writeFileSync(path, '')
+    truncateSync(path, TURBO.bytes - 1) // sparse — no real disk use
+    expect(isModelPresent(home, TURBO)).toBe(false)
+    truncateSync(path, TURBO.bytes)
+    expect(isModelPresent(home, TURBO)).toBe(true)
+  })
+})
+
+describe('checkDownload — size and SHA-256 must both match the catalog', () => {
+  const model: LocalModel = { ...TURBO, bytes: 3, sha256: 'abc' }
+
+  it('passes when both match', () => {
+    expect(checkDownload({ bytes: 3, sha256: 'abc' }, model)).toBeNull()
+  })
+
+  it('names the size mismatch', () => {
+    expect(checkDownload({ bytes: 2, sha256: 'abc' }, model)).toBe(
+      'Model download incomplete: got 2 of 3 bytes'
+    )
+  })
+
+  it('names the checksum mismatch', () => {
+    expect(checkDownload({ bytes: 3, sha256: 'def' }, model)).toBe(
+      'Model download is corrupt: SHA-256 does not match'
+    )
   })
 })

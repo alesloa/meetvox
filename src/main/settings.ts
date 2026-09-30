@@ -6,8 +6,17 @@
 
 import { existsSync, readFileSync, writeFileSync, renameSync } from 'fs'
 import { join } from 'path'
-import { DEFAULT_INTERVAL_SEC, GAIN_DEFAULT, MODEL_FILENAME } from '@shared/constants'
-import type { Settings } from '@shared/types'
+import { DEFAULT_INTERVAL_SEC, GAIN_DEFAULT } from '@shared/constants'
+import {
+  DEFAULT_LOCAL_MODEL,
+  DEFAULT_SERVER_URL,
+  ENGINE_LABELS,
+  GROQ,
+  OPENAI,
+  findLocalModel,
+  type TranscriptionEngine
+} from '@shared/transcription'
+import type { Settings, TranscriptionSettings } from '@shared/types'
 
 /** Built entirely from constants. summary is empty here; Phase 8 seeds presets. */
 export const DEFAULT_SETTINGS: Settings = {
@@ -19,7 +28,13 @@ export const DEFAULT_SETTINGS: Settings = {
   intervalSec: DEFAULT_INTERVAL_SEC,
   preMonitorSystem: false,
   recordingsDir: null,
-  modelFilename: MODEL_FILENAME,
+  transcription: {
+    engine: 'local',
+    localModel: DEFAULT_LOCAL_MODEL,
+    serverUrl: DEFAULT_SERVER_URL,
+    openaiModel: OPENAI.defaultModel,
+    groqModel: GROQ.defaultModel
+  },
   summary: { providers: [], defaultProviderId: null }
 }
 
@@ -28,8 +43,29 @@ export function settingsPath(userDataDir: string): string {
 }
 
 /** On-disk shape: the Settings fields plus an optional encrypted-secrets map. */
-interface SettingsFile extends Partial<Settings> {
+interface SettingsFile extends Omit<Partial<Settings>, 'transcription'> {
   secrets?: Record<string, string>
+  transcription?: Partial<TranscriptionSettings>
+  /** Pre-engines builds stored the on-device model here. Read once, never written. */
+  modelFilename?: string
+}
+
+function isEngine(v: unknown): v is TranscriptionEngine {
+  return typeof v === 'string' && Object.hasOwn(ENGINE_LABELS, v)
+}
+
+/** Validate the stored transcription block field by field; bad values fall back to defaults. */
+function mergeTranscription(file: SettingsFile): TranscriptionSettings {
+  const d = DEFAULT_SETTINGS.transcription
+  const t = file.transcription ?? {}
+  const localModel = t.localModel ?? file.modelFilename
+  return {
+    engine: isEngine(t.engine) ? t.engine : d.engine,
+    localModel: localModel && findLocalModel(localModel) ? localModel : d.localModel,
+    serverUrl: typeof t.serverUrl === 'string' ? t.serverUrl : d.serverUrl,
+    openaiModel: t.openaiModel || d.openaiModel,
+    groqModel: t.groqModel || d.groqModel
+  }
 }
 
 /** Read + parse the raw file. Never throws — a missing/malformed file yields {}. */
@@ -64,7 +100,7 @@ function mergeSettings(file: SettingsFile): Settings {
     intervalSec: file.intervalSec ?? DEFAULT_SETTINGS.intervalSec,
     preMonitorSystem: file.preMonitorSystem ?? DEFAULT_SETTINGS.preMonitorSystem,
     recordingsDir: file.recordingsDir ?? DEFAULT_SETTINGS.recordingsDir,
-    modelFilename: file.modelFilename ?? DEFAULT_SETTINGS.modelFilename,
+    transcription: mergeTranscription(file),
     summary: {
       providers: file.summary?.providers ?? DEFAULT_SETTINGS.summary.providers,
       defaultProviderId: file.summary?.defaultProviderId ?? DEFAULT_SETTINGS.summary.defaultProviderId
@@ -92,6 +128,7 @@ export function saveSettings(userDataDir: string, partial: Partial<Settings>): S
     ...current,
     ...partial,
     gains: { ...current.gains, ...(partial.gains ?? {}) },
+    transcription: { ...current.transcription, ...(partial.transcription ?? {}) },
     // Preserve providers if the caller omits them, but allow defaultProviderId to
     // be set to null (clear the default) — `??` would wrongly keep the old value.
     summary: partial.summary
@@ -104,6 +141,7 @@ export function saveSettings(userDataDir: string, partial: Partial<Settings>): S
         }
       : current.summary
   }
+  // Built from `merged`, so a legacy `modelFilename` in the file is dropped here.
   writeFile(userDataDir, { ...merged, secrets: file.secrets })
   return merged
 }
