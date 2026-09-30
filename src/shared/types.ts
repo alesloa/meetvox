@@ -1,6 +1,8 @@
 // Domain types shared between the Electron main process and the renderer.
 // Behavior is a faithful port of recorder_blackhole.py + transcribe_meeting.py.
 
+import type { TranscriptionEngine } from './transcription'
+
 export interface AudioDevice {
   /** PortAudio device index, or a synthetic id for the Mac system-audio entry. */
   id: number
@@ -49,6 +51,8 @@ export interface TranscribeProgress {
 }
 
 export interface ModelDownloadProgress {
+  /** Model file being downloaded (a LOCAL_MODELS `file`). */
+  file: string
   receivedBytes: number
   totalBytes: number
   /** 0–1; -1 when total is unknown. */
@@ -167,6 +171,24 @@ export interface Settings {
   /** Where recordings + transcripts are saved. null = the built-in default
    *  (userData/recordings). An absolute path overrides it. */
   recordingsDir: string | null
-  modelFilename: string
+  transcription: TranscriptionSettings
   summary: SummaryConfig
 }
+
+/** Every engine keeps its own config, so switching engines never loses the others. */
+export interface TranscriptionSettings {
+  engine: TranscriptionEngine
+  /** A LOCAL_MODELS `file`. */
+  localModel: string
+  serverUrl: string
+  openaiModel: string
+  groqModel: string
+}
+
+export interface LocalModelStatus {
+  file: string
+  downloaded: boolean
+}
+
+/** Result of the Settings "Test" button: a real 1-second request to the engine. */
+export type EngineTestResult = { ok: true; ms: number } | { ok: false; error: string }

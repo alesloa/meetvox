@@ -16,22 +16,34 @@ import type {
   TranscribeResult,
   TranscribeProgress,
   DeviceList,
-  Settings
+  EngineTestResult,
+  LocalModelStatus,
+  Settings,
+  TranscriptionSettings
 } from '@shared/types'
+import { LOCAL_MODELS, findLocalModel, type LocalModel } from '@shared/transcription'
 import type { AppContext } from './context'
 import { safeSend } from './safeSend'
-import { loadSettings, saveSettings, setSecret, clearSecret, secretIds } from './settings'
+import {
+  loadSettings,
+  saveSettings,
+  setSecret,
+  getSecret,
+  clearSecret,
+  secretIds
+} from './settings'
 import { enumerateDevices } from './audio/enumerate'
 import { listMeetings, getMeeting, renameMeeting, deleteMeeting } from './library'
 import { getMeetingAudio } from './protocol'
 import { toMarkdown, toPlainText, toSrt } from './export'
 import { createSystemSource, type SystemSource } from './audio/systemSource'
-import { ensureModel } from './models/download'
+import { ensureModel, isModelPresent, modelFilePath } from './models/download'
 import { makeRunners, runPipeline } from './transcribe/pipeline'
-import { transcribe as whisperTranscribe } from './transcribe/whisper'
+import { resolveEngine, testEngine, type Engine } from './transcribe/engine'
 import { importFolder, importFile, transcribeSingleTrack } from './import'
 import { generateSummary, getSummary } from './summary'
 import { getNotes, saveNotes } from './notes'
+import { openScreenRecorder } from './screenRecord'
 import { detectProviders } from './summary/detect'
 import { PRESETS } from './summary/providers'
 
@@ -148,31 +160,86 @@ export function registerIpc(ctx: AppContext, getWindow: () => BrowserWindow | nu
     ctx.monitor.setGain(gains)
   })
 
-  ipcMain.handle(
-    Commands.transcribe,
-    async (_e, { meetingDir }: { meetingDir?: string }): Promise<TranscribeResult> => {
-      const dir = meetingDir ?? ctx.recorder.getSessionDir() ?? newestMeeting(ctx.recordingsRoot)
-      if (!dir) throw new Error('No recording to transcribe yet.')
+  // --- Transcription engine ---------------------------------------------------
+  // One download per model at a time: a Settings "Download" and a transcribe that
+  // need the same file share one promise instead of racing on the same .part file.
+  const downloads = new Map<string, Promise<string>>()
+  const ensureLocalModel = (model: LocalModel): Promise<string> => {
+    const running = downloads.get(model.file)
+    if (running) return running
+    const download = ensureModel({
+      homeDir: ctx.homeDir,
+      model,
+      onProgress: (p) => send(Events.modelDownloadProgress, p)
+    }).finally(() => downloads.delete(model.file))
+    downloads.set(model.file, download)
+    return download
+  }
 
+  const engineFor = (
+    settings: TranscriptionSettings,
+    localModel: (m: LocalModel) => Promise<string> = ensureLocalModel
+  ): Promise<Engine> =>
+    resolveEngine({
+      settings,
+      getSecret: (id) => getSecret(ctx.userDataDir, id, safeStorage),
+      ensureLocalModel: localModel,
+      whisperPath: ctx.binary('whisper-cli')
+    })
+
+  /** The engine from saved settings. On-device first reports the model check/download. */
+  const startEngine = (): Promise<Engine> => {
+    const settings = ctx.settings.transcription
+    if (settings.engine === 'local') {
       send(Events.transcribeProgress, {
         phase: 'needs-model',
         message: 'Checking transcription model…',
         chunkIndex: 0,
         chunkCount: 0
       })
+    }
+    return engineFor(settings)
+  }
 
-      const modelPath = await ensureModel({
-        homeDir: ctx.homeDir,
-        onProgress: (p) => send(Events.modelDownloadProgress, p)
-      })
+  ipcMain.handle(
+    Commands.listLocalModels,
+    (): LocalModelStatus[] =>
+      LOCAL_MODELS.map((m) => ({ file: m.file, downloaded: isModelPresent(ctx.homeDir, m) }))
+  )
 
-      const runners = makeRunners({
-        ffmpegPath: ctx.binary('ffmpeg'),
-        whisperPath: ctx.binary('whisper-cli'),
-        modelPath
-      })
+  ipcMain.handle(Commands.downloadLocalModel, async (_e, { file }: { file: string }) => {
+    const model = findLocalModel(file)
+    if (!model) throw new Error(`Unknown on-device model "${file}"`)
+    await ensureLocalModel(model)
+  })
+
+  ipcMain.handle(
+    Commands.testTranscription,
+    async (_e, settings: TranscriptionSettings): Promise<EngineTestResult> => {
+      try {
+        // A test never starts a download — an on-device model must already be there.
+        const engine = await engineFor(settings, async (m) => {
+          if (!isModelPresent(ctx.homeDir, m)) throw new Error(`${m.label} isn't downloaded yet.`)
+          return modelFilePath(ctx.homeDir, m.file)
+        })
+        return testEngine(engine)
+      } catch (e) {
+        return { ok: false, error: e instanceof Error ? e.message : String(e) }
+      }
+    }
+  )
+
+  ipcMain.handle(
+    Commands.transcribe,
+    async (_e, { meetingDir }: { meetingDir?: string }): Promise<TranscribeResult> => {
+      const dir = meetingDir ?? ctx.recorder.getSessionDir() ?? newestMeeting(ctx.recordingsRoot)
+      if (!dir) throw new Error('No recording to transcribe yet.')
+
+      const engine = await startEngine()
+      const runners = makeRunners({ ffmpegPath: ctx.binary('ffmpeg'), transcribe: engine.transcribe })
 
       return runPipeline(dir, runners, {
+        engineLabel: engine.label,
         onProgress: (p) => send(Events.transcribeProgress, p)
       })
     }
@@ -211,16 +278,8 @@ export function registerIpc(ctx: AppContext, getWindow: () => BrowserWindow | nu
 
       const onProgress = (p: TranscribeProgress): void => send(Events.transcribeProgress, p)
 
-      send(Events.transcribeProgress, {
-        phase: 'needs-model',
-        message: 'Checking transcription model…',
-        chunkIndex: 0,
-        chunkCount: 0
-      })
-      const modelPath = await ensureModel({
-        homeDir: ctx.homeDir,
-        onProgress: (p) => send(Events.modelDownloadProgress, p)
-      })
+      // Resolved before importing, so a missing key/address fails with no orphan folder.
+      const engine = await startEngine()
 
       // Remove a half-created meeting folder if transcription fails after import,
       // so a failed import never leaves an orphan in the library. Uses the
@@ -240,10 +299,9 @@ export function registerIpc(ctx: AppContext, getWindow: () => BrowserWindow | nu
         await cleanupOnFailure(meetingDir, async () => {
           const runners = makeRunners({
             ffmpegPath: ctx.binary('ffmpeg'),
-            whisperPath: ctx.binary('whisper-cli'),
-            modelPath
+            transcribe: engine.transcribe
           })
-          await runPipeline(meetingDir, runners, { onProgress })
+          await runPipeline(meetingDir, runners, { engineLabel: engine.label, onProgress })
         })
         return { meetingDir }
       }
@@ -256,23 +314,18 @@ export function registerIpc(ctx: AppContext, getWindow: () => BrowserWindow | nu
       await cleanupOnFailure(meetingDir, async () => {
         onProgress({
           phase: 'running',
-          message: 'Transcribing imported audio…',
+          message: `Transcribing imported audio with ${engine.label}…`,
           chunkIndex: 1,
           chunkCount: 1
         })
         await transcribeSingleTrack(meetingDir, join(meetingDir, 'audio.wav'), {
-          transcribe: (wav) =>
-            whisperTranscribe({
-              whisperPath: ctx.binary('whisper-cli'),
-              modelPath,
-              wavPath: wav
-            }),
+          transcribe: engine.transcribe,
           now: () => new Date()
         })
       })
       onProgress({
         phase: 'done',
-        message: 'Imported audio transcribed',
+        message: `Imported audio transcribed with ${engine.label}`,
         chunkIndex: 0,
         chunkCount: 0
       })
@@ -288,6 +341,10 @@ export function registerIpc(ctx: AppContext, getWindow: () => BrowserWindow | nu
       ctx.recordingsRoot
     if (existsSync(dir)) await shell.openPath(dir)
   })
+
+  ipcMain.handle(Commands.openScreenRecorder, () =>
+    openScreenRecorder({ platform: ctx.platform, openPath: (p) => shell.openPath(p) })
+  )
 
   // --- Recordings folder (where recordings + transcripts are saved) ---------
   const recordingsDirInfo = (): { dir: string; isDefault: boolean } => ({
@@ -324,13 +381,6 @@ export function registerIpc(ctx: AppContext, getWindow: () => BrowserWindow | nu
   ipcMain.handle(Commands.openRecordingsDir, async () => {
     if (!existsSync(ctx.recordingsRoot)) mkdirSync(ctx.recordingsRoot, { recursive: true })
     await shell.openPath(ctx.recordingsRoot)
-  })
-
-  ipcMain.handle(Commands.retryModelDownload, async () => {
-    await ensureModel({
-      homeDir: ctx.homeDir,
-      onProgress: (p) => send(Events.modelDownloadProgress, p)
-    })
   })
 
   ipcMain.handle(Commands.listMeetings, () => listMeetings(ctx.recordingsRoot))

@@ -14,6 +14,7 @@ import { ChunkAccumulator } from './accumulator'
 import { gainAndPeakInPlace } from './levels'
 import { encodeChunk } from './wav'
 import { pcmFloat32 } from './pcm'
+import { settleWithin, QUIT_TIMEOUT_MS } from './teardown'
 import type { SystemSource } from './systemSource'
 import type { Gains, Levels, RecorderStatus } from '@shared/types'
 
@@ -148,8 +149,11 @@ export class Recorder extends EventEmitter {
 
     // Stop streams first so no more frames arrive, then flush the remainder.
     if (this.micIo) {
-      await new Promise<void>((resolve) => this.micIo.quit(resolve))
+      const io = this.micIo
       this.micIo = null
+      // Bound the PortAudio quit: an unbounded wait on this callback is exactly what
+      // froze the window on Stop when CoreAudio teardown stalled under load.
+      await settleWithin(new Promise<void>((resolve) => io.quit(resolve)), QUIT_TIMEOUT_MS)
     }
     if (this.systemSource) {
       await this.systemSource.stop()

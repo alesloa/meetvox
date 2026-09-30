@@ -11,6 +11,11 @@ function clampSec(sec: number): number {
   return Math.floor(sec)
 }
 
+/** Download size in decimal units, e.g. 1_624_555_275 → '1.62 GB', 574_041_195 → '574 MB'. */
+export function fmtBytes(n: number): string {
+  return n >= 1e9 ? `${(n / 1e9).toFixed(2)} GB` : `${Math.round(n / 1e6)} MB`
+}
+
 /** `HH:MM:SS`, always zero-padded. e.g. 0 → '00:00:00', 3725 → '01:02:05'. */
 export function fmtClock(sec: number): string {
   const total = clampSec(sec)

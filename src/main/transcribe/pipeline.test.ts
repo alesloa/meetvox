@@ -100,4 +100,25 @@ describe('runPipeline — writes transcript.txt + transcript.json, merged', () =
     expect(Array.isArray(json)).toBe(true)
     expect(json[0]).toMatchObject({ speaker: 'You', text: 'hello' })
   })
+
+  it('names the engine in its progress messages', async () => {
+    writeChunk(join(dir, 'chunk_001.wav'), 1)
+    const runners: PipelineRunners = {
+      split: async (_i, left, right) => {
+        writeFileSync(left, 'x')
+        writeFileSync(right, 'x')
+      },
+      level: async () => -10,
+      transcribe: async () => 'hi'
+    }
+    const messages: string[] = []
+    await runPipeline(dir, runners, {
+      engineLabel: 'Groq (whisper-large-v3-turbo)',
+      onProgress: (p) => messages.push(p.message)
+    })
+    expect(messages).toEqual([
+      'Processing chunk 1/1 with Groq (whisper-large-v3-turbo)',
+      'Transcribed 2 segments with Groq (whisper-large-v3-turbo)'
+    ])
+  })
 })
