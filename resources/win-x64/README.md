@@ -1,44 +1,34 @@
 # Windows (win-x64) binaries + setup
 
-Drop two executables here. They are gitignored (acquired/built separately):
+These files live here. They are gitignored and built from pinned sources:
 
 ```
 resources/win-x64/
-├── whisper-cli.exe     # whisper.cpp CLI (+ any whisper.dll / ggml*.dll it ships with)
-└── ffmpeg.exe          # static ffmpeg
+├── whisper-cli.exe     # whisper.cpp v1.9.5, mingw-w64, CPU only
+├── libwhisper.dll, ggml.dll, ggml-base.dll, ggml-cpu-*.dll
+└── ffmpeg.exe          # FFmpeg 7.1.5, LGPL, minimal
 ```
 
 There is **no** `meetvox-syscap` on Windows — system audio is captured through PortAudio,
 not a helper.
 
-## Fastest path (testing)
+## Build them
 
-From the repo root, in PowerShell:
+On a Mac or Linux machine (uses Docker when mingw-w64 isn't installed):
 
-```powershell
-powershell -ExecutionPolicy Bypass -File .\setup-win.ps1 -FetchBinaries
+```bash
+npm run binaries:win
 ```
 
-That installs deps, rebuilds the native audio addon for Electron, and downloads
-`whisper-cli.exe` (latest whisper.cpp release) + `ffmpeg.exe` (gyan.dev static) into this
-folder. Drop `-FetchBinaries` to only check + print instructions.
+On Windows, from the repo root in PowerShell, through WSL:
 
-> The prebuilt whisper.cpp release is **not** fully static — it ships `whisper.dll` /
-> `ggml*.dll`. The script copies those next to `whisper-cli.exe` so it resolves them from
-> its own directory; electron-builder bundles the whole `win-x64/` folder, so they ride
-> along. For a dependency-free ship build, do a from-source static build (below).
+```powershell
+powershell -ExecutionPolicy Bypass -File .\setup-win.ps1 -BuildBinaries
+```
 
-## From source (ship build)
-
-- **whisper-cli.exe** — build whisper.cpp with MSVC, static CRT (`/MT`), CPU-only:
-  ```
-  cmake -B build -DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded
-  cmake --build build --config Release
-  ```
-  Copy `build\bin\Release\whisper-cli.exe` here. The pipeline relies on the `-nt` flag
-  (see `src/main/transcribe/whisper.ts`).
-- **ffmpeg.exe** — static build per the configure in the top-level `resources/README.md`
-  (covers `channelsplit`/`volumedetect` for recording + the import demuxers/decoders).
+Both run `scripts/binaries/build.sh win`. The files need no Visual C++ redistributable:
+GCC's runtime is linked in. ggml picks the fastest `ggml-cpu-*.dll` for the processor at
+runtime. See `resources/README.md` for what each build includes.
 
 ## System audio on Windows — how it works
 
@@ -64,10 +54,11 @@ Mic = left channel = "You"; System = right channel = "Other" — unchanged from 
 
 ```
 npm run dev                       # run
-npx electron-builder --win nsis   # installer (not one-click; lets the user pick the dir)
+npm run dist:win                  # installer (not one-click; lets the user pick the dir)
 ```
 
-The 1 GB Whisper model (`ggml-large-v3-q5_0.bin`) is **not** bundled — it auto-downloads on
-first transcribe to `%USERPROFILE%\.meetvox\models\`. whisper-cli.exe is CPU-only on
-Windows (no Metal), so transcription is slower than on Apple Silicon but works.
+The Whisper model is **not** bundled. The one picked in Settings → Transcription
+(default `ggml-large-v3-turbo-q5_0.bin`, about 574 MB) downloads on first transcribe to
+`%USERPROFILE%\.meetvox\models\`. whisper-cli.exe is CPU-only on Windows (no Metal), so
+transcription is slower than on Apple Silicon; Turbo is the practical model here.
 ```
