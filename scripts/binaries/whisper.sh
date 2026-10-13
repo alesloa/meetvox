@@ -44,7 +44,6 @@ case "$TARGET" in
     [ "$TARGET" = mac-x64 ] && arch=x86_64
     config+=(-DBUILD_SHARED_LIBS=OFF -DGGML_METAL=ON -DGGML_METAL_EMBED_LIBRARY=ON
       -DCMAKE_OSX_ARCHITECTURES="$arch" -DCMAKE_OSX_DEPLOYMENT_TARGET="$MACOS_MIN")
-    files=(whisper-cli)
     ;;
   win-x64)
     # Windows passes command-line arguments in the system code page unless the exe
@@ -75,7 +74,6 @@ XML
       -DCMAKE_SHARED_LIBRARY_PREFIX= -DCMAKE_SHARED_MODULE_PREFIX= -DCMAKE_IMPORT_LIBRARY_PREFIX=
       -DCMAKE_EXE_LINKER_FLAGS="$static $WORK/utf8.o"
       -DCMAKE_SHARED_LINKER_FLAGS="$static" -DCMAKE_MODULE_LINKER_FLAGS="$static")
-    files=(whisper-cli.exe)
     ;;
   *)
     echo "unknown target: $TARGET" >&2
@@ -90,11 +88,12 @@ cmake --build "$WORK/build" --config Release -j "$jobs" --target whisper-cli >"$
 
 mkdir -p "$OUT"
 bin="$WORK/build/bin"
-for f in "${files[@]}"; do cp "$bin/$f" "$OUT/$f"; done
 # Windows: libwhisper.dll, ggml.dll, ggml-base.dll and every ggml-cpu-*.dll variant.
 # Stripping drops the symbol tables, about 42 MB -> 27 MB for the whole set.
 if [ "$TARGET" = win-x64 ]; then
   x86_64-w64-mingw32-strip --strip-unneeded "$bin/whisper-cli.exe" "$bin"/*.dll
   cp "$bin/whisper-cli.exe" "$bin"/*.dll "$OUT/"
+else
+  cp "$bin/whisper-cli" "$OUT/"
 fi
 echo "    -> $OUT"

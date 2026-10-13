@@ -3,7 +3,7 @@
 // Layout (one folder per platform/arch), bundled via electron-builder extraResources:
 //   resources/mac-arm64/{whisper-cli,ffmpeg,meetvox-syscap}
 //   resources/mac-x64/{whisper-cli,ffmpeg,meetvox-syscap}
-//   resources/win-x64/{whisper-cli.exe,ffmpeg.exe}
+//   resources/win-x64/{whisper-cli.exe,ffmpeg.exe} plus the whisper/ggml DLLs whisper-cli.exe loads
 //
 // Dev:      <projectRoot>/resources/<platform-dir>/<file>
 // Packaged: <process.resourcesPath>/<platform-dir>/<file>

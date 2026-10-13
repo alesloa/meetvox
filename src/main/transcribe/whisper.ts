@@ -55,11 +55,11 @@ export function transcribe(opts: WhisperOptions): Promise<string> {
     // Decode as a stream so a UTF-8 character split across two reads stays whole.
     proc.stdout.setEncoding('utf8')
     proc.stderr.setEncoding('utf8')
-    proc.stdout.on('data', (d) => {
-      stdout += d.toString()
+    proc.stdout.on('data', (d: string) => {
+      stdout += d
     })
-    proc.stderr.on('data', (d) => {
-      stderr += d.toString()
+    proc.stderr.on('data', (d: string) => {
+      stderr += d
     })
     proc.on('error', (err) => reject(err))
     proc.on('close', (code) => {
