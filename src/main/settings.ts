@@ -12,6 +12,7 @@ import {
   DEFAULT_SERVER_URL,
   ENGINE_LABELS,
   GROQ,
+  LEGACY_LOCAL_MODEL,
   OPENAI,
   findLocalModel,
   type TranscriptionEngine
@@ -144,6 +145,22 @@ export function saveSettings(userDataDir: string, partial: Partial<Settings>): S
   // Built from `merged`, so a legacy `modelFilename` in the file is dropped here.
   writeFile(userDataDir, { ...merged, secrets: file.secrets })
   return merged
+}
+
+/**
+ * Builds before Turbo defaulted to LEGACY_LOCAL_MODEL and only stored a model once
+ * settings were saved. If no choice is stored but that file is already downloaded,
+ * pin it so the upgrade doesn't start a second download.
+ */
+export function pinLegacyLocalModel(
+  userDataDir: string,
+  { legacyDownloaded }: { legacyDownloaded: boolean }
+): void {
+  const file = readFile(userDataDir)
+  if (!legacyDownloaded || file.transcription?.localModel || file.modelFilename) return
+  saveSettings(userDataDir, {
+    transcription: { ...mergeTranscription(file), localModel: LEGACY_LOCAL_MODEL }
+  })
 }
 
 // --- Encrypted key vault -------------------------------------------------

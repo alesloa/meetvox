@@ -16,11 +16,11 @@ function deps(t: Partial<TranscriptionSettings>, secrets: Record<string, string>
 }
 
 describe('resolveEngine', () => {
-  it('This Mac: makes sure the chosen model is downloaded and names it', async () => {
+  it('This computer: makes sure the chosen model is downloaded and names it', async () => {
     const d = deps({ engine: 'local', localModel: 'ggml-large-v3-turbo.bin' })
     const engine = await resolveEngine(d)
     expect(d.ensureLocalModel).toHaveBeenCalledWith(findLocalModel('ggml-large-v3-turbo.bin'))
-    expect(engine.label).toBe('This Mac (Large v3 Turbo)')
+    expect(engine.label).toBe('This computer (Large v3 Turbo)')
   })
 
   it('Whisper server: names the host it will use', async () => {

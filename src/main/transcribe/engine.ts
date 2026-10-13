@@ -9,6 +9,7 @@ import { transcribe as whisperTranscribe } from './whisper'
 import { cloudTranscriber, FIX_IT, serverTranscriber, silentWav, type Transcribe } from './remote'
 import {
   CLOUD_PROVIDERS,
+  ENGINE_LABELS,
   findLocalModel,
   normalizeServerUrl,
   OPENAI,
@@ -42,7 +43,7 @@ export async function resolveEngine(deps: EngineDeps): Promise<Engine> {
       if (!model) throw new Error(`Unknown on-device model "${t.localModel}". Pick one in ${FIX_IT}.`)
       const modelPath = await deps.ensureLocalModel(model)
       return {
-        label: `This Mac (${model.label})`,
+        label: `${ENGINE_LABELS.local} (${model.label})`,
         transcribe: (wavPath) =>
           whisperTranscribe({ whisperPath: deps.whisperPath, modelPath, wavPath })
       }

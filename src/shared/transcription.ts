@@ -6,7 +6,7 @@
 export type TranscriptionEngine = 'local' | 'server' | 'openai' | 'groq'
 
 export const ENGINE_LABELS: Record<TranscriptionEngine, string> = {
-  local: 'This Mac',
+  local: 'This computer',
   server: 'Whisper server',
   openai: 'OpenAI',
   groq: 'Groq'
@@ -27,32 +27,42 @@ export interface LocalModel {
 // Sizes + hashes: https://huggingface.co/api/models/ggerganov/whisper.cpp/tree/main
 // Turbo note: openai/whisper README — "an optimized version of large-v3 that offers
 // faster transcription speed with a minimal degradation in accuracy" (~8x vs 1x).
+// Ordered fastest first, strongest last; the first entry is the default.
 export const LOCAL_MODELS: readonly LocalModel[] = [
-  {
-    file: 'ggml-large-v3-turbo.bin',
-    label: 'Large v3 Turbo',
-    note: 'About 8x faster than Large v3, with a small accuracy drop.',
-    bytes: 1_624_555_275,
-    sha256: '1fc70f774d38eb169993ac391eea357ef47c88757ef72ee5943879b7e8e2bc69'
-  },
   {
     file: 'ggml-large-v3-turbo-q5_0.bin',
     label: 'Large v3 Turbo (compressed)',
-    note: 'Same Turbo model, compressed to about a third of the download.',
+    note: 'Recommended. About 8x faster than Large v3, and the smallest download.',
     bytes: 574_041_195,
     sha256: '394221709cd5ad1f40c46e6031ca61bce88931e6e088c188294c6d5a55ffa7e2'
   },
   {
+    file: 'ggml-large-v3-turbo.bin',
+    label: 'Large v3 Turbo',
+    note: 'The same Turbo model, not compressed. About 3x the download.',
+    bytes: 1_624_555_275,
+    sha256: '1fc70f774d38eb169993ac391eea357ef47c88757ef72ee5943879b7e8e2bc69'
+  },
+  {
     file: 'ggml-large-v3-q5_0.bin',
     label: 'Large v3 (compressed)',
-    note: 'Full Large v3, compressed. Slower than Turbo.',
+    note: 'More accurate than Turbo, and about 8x slower.',
     bytes: 1_081_140_203,
     sha256: 'd75795ecff3f83b5faa89d1900604ad8c780abd5739fae406de19f23ecd98ad1'
+  },
+  {
+    file: 'ggml-large-v3.bin',
+    label: 'Large v3',
+    note: 'The most accurate. Not compressed, so the biggest download.',
+    bytes: 3_095_033_483,
+    sha256: '64d182b440b98d5203c4f9bd541544d84c605196c4f7b845dfa11fb23594d1e2'
   }
 ]
 
-/** The model Meetvox shipped with — kept as the default so no one gets a surprise download. */
-export const DEFAULT_LOCAL_MODEL = 'ggml-large-v3-q5_0.bin'
+export const DEFAULT_LOCAL_MODEL = 'ggml-large-v3-turbo-q5_0.bin'
+
+/** The default before Turbo. Installs that already downloaded it keep it (see pinLegacyLocalModel). */
+export const LEGACY_LOCAL_MODEL = 'ggml-large-v3-q5_0.bin'
 
 export function localModelUrl(file: string): string {
   return `https://huggingface.co/ggerganov/whisper.cpp/resolve/main/${file}`

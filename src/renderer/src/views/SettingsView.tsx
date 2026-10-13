@@ -535,7 +535,7 @@ function AboutPanel(): JSX.Element {
       <div className="space-y-1 text-sm text-muted-foreground">
         <p>Local meeting recorder &amp; transcriber.</p>
         <p>
-          Records your mic and system audio, then transcribes it with Whisper, on this Mac or with
+          Records your mic and system audio, then transcribes it with Whisper, on this computer or with
           the engine you pick in Transcription settings.
         </p>
       </div>

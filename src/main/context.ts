@@ -7,7 +7,9 @@ import { join } from 'path'
 import { Recorder } from './audio/recorder'
 import { Monitor } from './monitor'
 import { resolveBinary, type BinaryName } from './binaries/resolve'
-import { loadSettings } from './settings'
+import { loadSettings, pinLegacyLocalModel } from './settings'
+import { isModelPresent } from './models/download'
+import { LEGACY_LOCAL_MODEL, findLocalModel } from '@shared/transcription'
 import type { Platform, Settings } from '@shared/types'
 
 export interface AppContext {
@@ -32,6 +34,11 @@ export interface AppContext {
 export function createContext(): AppContext {
   const platform: Platform = process.platform === 'win32' ? 'win' : 'mac'
   const userDataDir = app.getPath('userData')
+  const homeDir = homedir()
+  const legacy = findLocalModel(LEGACY_LOCAL_MODEL)
+  pinLegacyLocalModel(userDataDir, {
+    legacyDownloaded: legacy !== undefined && isModelPresent(homeDir, legacy)
+  })
   const settings = loadSettings(userDataDir)
   const defaultRecordingsRoot = join(userDataDir, 'recordings')
   // A saved custom folder overrides the default; null falls back to it.
@@ -51,7 +58,7 @@ export function createContext(): AppContext {
     userDataDir,
     recordingsRoot,
     defaultRecordingsRoot,
-    homeDir: homedir(),
+    homeDir,
     recorder: new Recorder(),
     monitor: new Monitor(),
     binary,

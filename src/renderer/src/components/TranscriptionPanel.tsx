@@ -24,7 +24,7 @@ import type {
 const ENGINES: TranscriptionEngine[] = ['local', 'server', 'openai', 'groq']
 
 const ENGINE_HINTS: Record<TranscriptionEngine, string> = {
-  local: 'Runs on this Mac. Your audio never leaves your computer.',
+  local: 'Runs on this computer. Your audio never leaves it.',
   server: 'Sends audio to a whisper.cpp server, like one on a faster computer on your network.',
   openai: 'Sends audio to OpenAI to transcribe. It leaves your computer.',
   groq: 'Sends audio to Groq to transcribe. It leaves your computer.'
@@ -82,12 +82,17 @@ export function TranscriptionPanel({
   )
 }
 
-// ── This Mac ─────────────────────────────────────────────────────────────────
+// ── This computer ────────────────────────────────────────────────────────────
 
 function LocalEngine({ t, update }: { t: TranscriptionSettings; update: Update }): JSX.Element {
   const [downloaded, setDownloaded] = useState<Record<string, boolean>>({})
   const [progress, setProgress] = useState<Record<string, ModelDownloadProgress>>({})
   const [errors, setErrors] = useState<Record<string, string>>({})
+  const [platform, setPlatform] = useState<'mac' | 'win' | null>(null)
+
+  useEffect(() => {
+    void window.meetvox.getPlatform().then(setPlatform)
+  }, [])
 
   const refresh = useCallback(async () => {
     const list = await window.meetvox.listLocalModels()
@@ -163,6 +168,12 @@ function LocalEngine({ t, update }: { t: TranscriptionSettings; update: Update }
       <p className="text-xs text-muted-foreground">
         If the model you pick isn&apos;t downloaded yet, it downloads the first time you transcribe.
       </p>
+      {platform === 'win' && (
+        <p className="text-xs text-muted-foreground">
+          On Windows, Whisper runs on the processor only, not the graphics card. The Large v3
+          models can take a long time here; Turbo is the better pick.
+        </p>
+      )}
     </div>
   )
 }
@@ -260,8 +271,8 @@ function CloudEngine({
         label={`${provider.label} API key`}
         hint={
           provider.engine === 'openai'
-            ? 'Stored encrypted on this Mac. The same key is used by AI Summary → OpenAI.'
-            : 'Stored encrypted on this Mac.'
+            ? 'Stored encrypted on this computer. The same key is used by AI Summary → OpenAI.'
+            : 'Stored encrypted on this computer.'
         }
       >
         <ApiKeyField

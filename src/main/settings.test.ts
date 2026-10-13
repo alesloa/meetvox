@@ -1,5 +1,5 @@
 import { describe, test, expect, beforeEach, afterEach } from 'vitest'
-import { mkdtempSync, rmSync, writeFileSync, readFileSync } from 'fs'
+import { mkdtempSync, rmSync, writeFileSync, readFileSync, existsSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
 import {
@@ -12,6 +12,7 @@ import {
   hasSecret,
   clearSecret,
   secretIds,
+  pinLegacyLocalModel,
   type SecretStorage
 } from './settings'
 import { DEFAULT_INTERVAL_SEC, GAIN_DEFAULT } from '@shared/constants'
@@ -19,6 +20,7 @@ import {
   DEFAULT_LOCAL_MODEL,
   DEFAULT_SERVER_URL,
   GROQ,
+  LEGACY_LOCAL_MODEL,
   OPENAI
 } from '@shared/transcription'
 import type { Settings } from '@shared/types'
@@ -71,6 +73,38 @@ describe('recordingsDir persistence', () => {
     // Reset: null must win over the stored path (not get `??`-coalesced back).
     expect(saveSettings(dir, { recordingsDir: null }).recordingsDir).toBeNull()
     expect(loadSettings(dir).recordingsDir).toBeNull()
+  })
+})
+
+describe('on-device model default', () => {
+  test('a new install uses Large v3 Turbo (compressed)', () => {
+    expect(DEFAULT_LOCAL_MODEL).toBe('ggml-large-v3-turbo-q5_0.bin')
+    expect(loadSettings(dir).transcription.localModel).toBe('ggml-large-v3-turbo-q5_0.bin')
+  })
+
+  test('an upgrade with no saved choice keeps the old default when it is already downloaded', () => {
+    pinLegacyLocalModel(dir, { legacyDownloaded: true })
+    expect(loadSettings(dir).transcription.localModel).toBe(LEGACY_LOCAL_MODEL)
+  })
+
+  test('no saved choice and no old download: the new default stays and nothing is written', () => {
+    pinLegacyLocalModel(dir, { legacyDownloaded: false })
+    expect(loadSettings(dir).transcription.localModel).toBe(DEFAULT_LOCAL_MODEL)
+    expect(existsSync(settingsPath(dir))).toBe(false)
+  })
+
+  test('a saved choice is never changed', () => {
+    saveSettings(dir, {
+      transcription: { ...DEFAULT_SETTINGS.transcription, localModel: 'ggml-large-v3.bin' }
+    })
+    pinLegacyLocalModel(dir, { legacyDownloaded: true })
+    expect(loadSettings(dir).transcription.localModel).toBe('ggml-large-v3.bin')
+  })
+
+  test('a pre-engines modelFilename counts as a saved choice', () => {
+    writeFileSync(settingsPath(dir), JSON.stringify({ modelFilename: 'ggml-large-v3-turbo.bin' }))
+    pinLegacyLocalModel(dir, { legacyDownloaded: true })
+    expect(loadSettings(dir).transcription.localModel).toBe('ggml-large-v3-turbo.bin')
   })
 })
 
