@@ -1,5 +1,27 @@
 import { describe, it, expect } from 'vitest'
-import { parseWhisperOutput } from './whisper'
+import { chmodSync, mkdtempSync, rmSync, writeFileSync } from 'fs'
+import { join } from 'path'
+import { tmpdir } from 'os'
+import { parseWhisperOutput, transcribe } from './whisper'
+
+describe('transcribe — reads whisper-cli stdout', () => {
+  it.skipIf(process.platform === 'win32')(
+    'keeps a UTF-8 character that arrives split across two reads',
+    async () => {
+      const dir = mkdtempSync(join(tmpdir(), 'meetvox-whisper-'))
+      try {
+        // "été": the first é is \303\251. Send \303 alone, pause, then the rest.
+        const fake = join(dir, 'fake-whisper')
+        writeFileSync(fake, "#!/bin/sh\nprintf '\\303'\nsleep 0.2\nprintf '\\251t\\303\\251\\n'\n")
+        chmodSync(fake, 0o755)
+        const text = await transcribe({ whisperPath: fake, modelPath: 'm.bin', wavPath: 'a.wav' })
+        expect(text).toBe('été')
+      } finally {
+        rmSync(dir, { recursive: true, force: true })
+      }
+    }
+  )
+})
 
 describe('parseWhisperOutput — normalizes whisper-cli output into the channel text', () => {
   it('passes real -nt output (a single line) through, trimmed', () => {

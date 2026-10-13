@@ -52,6 +52,9 @@ export function transcribe(opts: WhisperOptions): Promise<string> {
     const proc = spawn(whisperPath, args)
     let stdout = ''
     let stderr = ''
+    // Decode as a stream so a UTF-8 character split across two reads stays whole.
+    proc.stdout.setEncoding('utf8')
+    proc.stderr.setEncoding('utf8')
     proc.stdout.on('data', (d) => {
       stdout += d.toString()
     })
