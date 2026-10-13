@@ -13,22 +13,24 @@
     2. npm install.
     3. Rebuild naudiodon2 (the PortAudio addon) for the Electron ABI.
     4. Check resources\win-x64\ for whisper-cli.exe + ffmpeg.exe.
-       Pass -FetchBinaries to download them from official sources automatically.
+       Pass -BuildBinaries to build them from pinned sources.
 
-  After it finishes, run the app with `npm run dev` (or build with
-  `npx electron-builder --win nsis`).
+  After it finishes, run the app with `npm run dev` (or build the installer with
+  `npm run dist:win`).
 
-.PARAMETER FetchBinaries
-  Download whisper-cli.exe (whisper.cpp latest release) and ffmpeg.exe (gyan.dev
-  static build) into resources\win-x64\. Without this switch the script only checks
-  for them and prints where to get them.
+.PARAMETER BuildBinaries
+  Build whisper-cli.exe (+ its DLLs) and ffmpeg.exe into resources\win-x64\ by running
+  scripts/binaries/build.sh through bash (WSL). Inside WSL that needs either Docker or:
+      sudo apt install g++-mingw-w64-x86-64-posix cmake make git curl xz-utils
+  Without this switch the script only checks for them. You can also run
+  `npm run binaries:win` on a Mac or Linux machine and copy resources\win-x64\ here.
 
 .PARAMETER SkipInstall
   Skip `npm install` + the native rebuild (use when deps are already set up and you
   only want the binary check/fetch).
 #>
 param(
-  [switch]$FetchBinaries,
+  [switch]$BuildBinaries,
   [switch]$SkipInstall
 )
 
@@ -75,56 +77,33 @@ if ($SkipInstall) {
 # --- 4. Binaries -----------------------------------------------------------
 New-Item -ItemType Directory -Force -Path $winDir | Out-Null
 
-function Fetch-Whisper {
-  Info "Fetching whisper.cpp Windows release"
-  $api = 'https://api.github.com/repos/ggml-org/whisper.cpp/releases/latest'
-  $rel = Invoke-RestMethod -Uri $api -Headers @{ 'User-Agent' = 'meetvox-setup' }
-  $asset = $rel.assets | Where-Object { $_.name -match 'win.*x64.*\.zip$|whisper-bin-x64.*\.zip$' } | Select-Object -First 1
-  if (-not $asset) { throw "No win-x64 zip in the latest whisper.cpp release. Build from source (see resources\win-x64\README.md)." }
-  $zip = Join-Path $env:TEMP $asset.name
-  Invoke-WebRequest -Uri $asset.browser_download_url -OutFile $zip
-  $tmp = Join-Path $env:TEMP ('whisper_' + [System.IO.Path]::GetFileNameWithoutExtension($asset.name))
-  if (Test-Path $tmp) { Remove-Item $tmp -Recurse -Force }
-  Expand-Archive -Path $zip -DestinationPath $tmp -Force
-
-  # The CLI is whisper-cli.exe (recent) or main.exe (older). Copy it + every DLL next
-  # to it (whisper.dll / ggml*.dll) so the exe resolves its deps from its own folder.
-  $cli = Get-ChildItem $tmp -Recurse -File | Where-Object { $_.Name -in 'whisper-cli.exe', 'main.exe' } | Select-Object -First 1
-  if (-not $cli) { throw "whisper-cli.exe not found in the release zip." }
-  Copy-Item $cli.FullName $whisper -Force
-  Get-ChildItem $cli.Directory -Filter '*.dll' | ForEach-Object { Copy-Item $_.FullName (Join-Path $winDir $_.Name) -Force }
-  Ok "whisper-cli.exe (+ DLLs) -> resources\win-x64\"
+function Build-Binaries {
+  # Both are built from pinned sources with mingw-w64 (see scripts\binaries\). That
+  # avoids the Visual C++ runtime the official whisper.cpp build needs, and keeps
+  # ffmpeg LGPL (the gyan.dev builds are GPL).
+  if (-not (Get-Command bash -ErrorAction SilentlyContinue)) {
+    throw "bash not found. Install WSL (wsl --install), or run 'npm run binaries:win' on a Mac or Linux machine and copy resources\win-x64\ here."
+  }
+  Info "Building whisper-cli.exe + ffmpeg.exe (scripts/binaries/build.sh win)"
+  bash scripts/binaries/build.sh win
+  if ($LASTEXITCODE -ne 0) { throw "Building the binaries failed (see the output above)." }
+  Ok "whisper-cli.exe (+ DLLs) and ffmpeg.exe -> resources\win-x64\"
 }
 
-function Fetch-Ffmpeg {
-  Info "Fetching ffmpeg static (gyan.dev essentials)"
-  $url = 'https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip'
-  $zip = Join-Path $env:TEMP 'ffmpeg-release-essentials.zip'
-  Invoke-WebRequest -Uri $url -OutFile $zip
-  $tmp = Join-Path $env:TEMP 'ffmpeg_extract'
-  if (Test-Path $tmp) { Remove-Item $tmp -Recurse -Force }
-  Expand-Archive -Path $zip -DestinationPath $tmp -Force
-  $exe = Get-ChildItem $tmp -Recurse -File | Where-Object { $_.Name -eq 'ffmpeg.exe' } | Select-Object -First 1
-  if (-not $exe) { throw "ffmpeg.exe not found in the gyan.dev zip." }
-  Copy-Item $exe.FullName $ffmpeg -Force
-  Ok "ffmpeg.exe -> resources\win-x64\"
+if ($BuildBinaries -and -not ((Test-Path $whisper) -and (Test-Path $ffmpeg))) {
+  Build-Binaries
 }
-
-if ($FetchBinaries) {
-  if (Test-Path $whisper) { Ok "whisper-cli.exe already present" } else { Fetch-Whisper }
-  if (Test-Path $ffmpeg)  { Ok "ffmpeg.exe already present" }      else { Fetch-Ffmpeg }
-} else {
-  Info "Checking bundled binaries"
-  if (Test-Path $whisper) { Ok "whisper-cli.exe present" } else { Warn "MISSING whisper-cli.exe  (re-run with -FetchBinaries, or see resources\win-x64\README.md)" }
-  if (Test-Path $ffmpeg)  { Ok "ffmpeg.exe present" }      else { Warn "MISSING ffmpeg.exe  (re-run with -FetchBinaries, or see resources\win-x64\README.md)" }
-}
+Info "Checking bundled binaries"
+if (Test-Path $whisper) { Ok "whisper-cli.exe present" } else { Warn "MISSING whisper-cli.exe  (re-run with -BuildBinaries, or see resources\win-x64\README.md)" }
+if (Test-Path $ffmpeg)  { Ok "ffmpeg.exe present" }      else { Warn "MISSING ffmpeg.exe  (re-run with -BuildBinaries, or see resources\win-x64\README.md)" }
 
 # --- Summary ---------------------------------------------------------------
 Write-Host ""
 Info "Done. Next:"
 Write-Host "    npm run dev                      # run the app"
-Write-Host "    npx electron-builder --win nsis  # build the installer"
+Write-Host "    npm run dist:win                 # build the installer"
 Write-Host ""
 Write-Host "System audio: install VB-Cable (https://vb-audio.com/Cable/), set it as the"
 Write-Host "Windows default OUTPUT, and pick 'CABLE Output (VB-Audio)' as System Audio in"
-Write-Host "the app. The 1 GB model auto-downloads on first transcribe to %USERPROFILE%\.meetvox\models\."
+Write-Host "the app. The Whisper model you pick (574 MB by default) downloads on first"
+Write-Host "transcribe to %USERPROFILE%\.meetvox\models\."
