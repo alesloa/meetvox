@@ -6,15 +6,14 @@ release/
 .DS_Store
 .vite/
 
-# Bundled native binaries are large and acquired/built separately.
+# Bundled native binaries: built by `npm run binaries:mac` / `binaries:win`, never committed.
 resources/mac-arm64/whisper-cli
 resources/mac-arm64/ffmpeg
 resources/mac-x64/whisper-cli
 resources/mac-x64/ffmpeg
 resources/win-x64/whisper-cli.exe
 resources/win-x64/ffmpeg.exe
-# whisper.cpp's prebuilt Windows release ships DLLs (whisper.dll, ggml*.dll) next to
-# the exe — keep those local too. (A from-source static /MT build needs none.)
+# The Windows whisper-cli.exe loads libwhisper.dll, ggml*.dll from its own folder.
 resources/win-x64/*.dll
 resources/**/meetvox-syscap
 native/meetvox-syscap/.build/

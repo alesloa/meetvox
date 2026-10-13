@@ -1,5 +1,41 @@
 import { describe, it, expect } from 'vitest'
-import { platformDir, binaryFileName, binaryRelPath } from './resolve'
+import { mkdtempSync, rmSync } from 'fs'
+import { join } from 'path'
+import { tmpdir } from 'os'
+import { platformDir, binaryFileName, binaryRelPath, resolveBinary } from './resolve'
+
+describe('resolveBinary — a missing binary says how to fix it', () => {
+  const empty = (): string => mkdtempSync(join(tmpdir(), 'meetvox-resolve-'))
+
+  it('installed app: tells the user to reinstall', () => {
+    const dir = empty()
+    try {
+      expect(() =>
+        resolveBinary('ffmpeg', {
+          isPackaged: true,
+          resourcesPath: dir,
+          projectRoot: dir,
+          platform: 'darwin',
+          arch: 'arm64'
+        })
+      ).toThrow('Meetvox is missing ffmpeg, a file it needs. Reinstall Meetvox.')
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
+  it('source checkout: names the npm script that builds or fetches it', () => {
+    const dir = empty()
+    try {
+      const run = (platform: NodeJS.Platform, arch: string): (() => string) => () =>
+        resolveBinary('whisper-cli', { isPackaged: false, resourcesPath: dir, projectRoot: dir, platform, arch })
+      expect(run('darwin', 'arm64')).toThrow('npm run binaries:mac')
+      expect(run('win32', 'x64')).toThrow('npm run binaries:win')
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+})
 
 describe('platformDir — maps platform/arch to the bundled resource folder', () => {
   it('maps mac arm64 / x64 and win x64', () => {

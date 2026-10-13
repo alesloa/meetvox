@@ -18,8 +18,10 @@
     "rebuild": "electron-builder install-app-deps",
     "postinstall": "electron-builder install-app-deps",
     "pack:syscap": "bash native/meetvox-syscap/build.sh",
-    "dist:mac": "electron-vite build && electron-builder --mac",
-    "dist:win": "electron-vite build && electron-builder --win"
+    "binaries:mac": "bash scripts/binaries/build.sh mac",
+    "binaries:win": "bash scripts/binaries/build.sh win",
+    "dist:mac": "node scripts/binaries/check.mjs mac && electron-vite build && electron-builder --mac",
+    "dist:win": "node scripts/binaries/check.mjs win && electron-vite build && electron-builder --win"
   },
   "dependencies": {
     "naudiodon2": "^2.3.6"

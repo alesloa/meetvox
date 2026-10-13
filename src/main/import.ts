@@ -101,9 +101,8 @@ export interface ImportFileDeps {
 /**
  * Import a single arbitrary audio file into a new meeting folder by DECODING it
  * (read-only) to one normalized 16 kHz mono pcm_s16le `audio.wav`. No channel
- * split → channelMapped:false. Decoding non-WAV input requires the bigger ffmpeg
- * build (see _plans/finishing/readme.md); the bundled minimal ffmpeg only handles
- * WAV until rebuilt — an honest runtime dependency, not a bug here.
+ * split → channelMapped:false. The bundled ffmpeg (scripts/binaries/ffmpeg.sh)
+ * decodes every format the Import dialog offers.
  */
 export async function importFile(
   srcFile: string,
@@ -149,7 +148,7 @@ export async function importFile(
       })
     })
   } catch (e) {
-    // Decode failed (e.g. an unsupported format on the minimal bundled ffmpeg) —
+    // Decode failed (e.g. a corrupt file, or a codec the bundled ffmpeg lacks) —
     // remove the partial meeting folder we just created so it doesn't linger.
     rmSync(meetingDir, { recursive: true, force: true })
     throw e

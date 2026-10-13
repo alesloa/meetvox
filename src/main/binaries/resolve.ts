@@ -58,11 +58,12 @@ export function resolveBinary(name: BinaryName, ctx: ResolveContext): string {
   const arch = ctx.arch ?? process.arch
   const root = resourcesRoot(ctx)
   const full = join(root, binaryRelPath(name, platform, arch))
-  if (!existsSync(full)) {
-    throw new Error(
-      `Bundled binary "${name}" not found at ${full}. ` +
-        `Place the ${platformDir(platform, arch)} build under resources/ (see resources/README.md).`
-    )
+  if (existsSync(full)) return full
+  if (ctx.isPackaged) {
+    throw new Error(`Meetvox is missing ${name}, a file it needs. Reinstall Meetvox.`)
   }
-  return full
+  const script = platform === 'win32' ? 'binaries:win' : 'binaries:mac'
+  throw new Error(
+    `${name} not found at ${full}. Run \`npm run ${script}\` to build or fetch it (see resources/README.md).`
+  )
 }
