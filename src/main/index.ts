@@ -86,7 +86,8 @@ function showWindow(): void {
 }
 
 app.whenReady().then(() => {
-  ctx = createContext()
+  const appCtx = createContext()
+  ctx = appCtx
   // A nicer About panel (mac ⌘-menu → About Meetvox, and the Win/Help about box).
   app.setAboutPanelOptions({ applicationName: 'Meetvox', applicationVersion: app.getVersion() })
 
@@ -97,19 +98,20 @@ app.whenReady().then(() => {
     const devIcon = nativeImage.createFromPath(join(app.getAppPath(), 'build', 'icon.png'))
     if (!devIcon.isEmpty()) app.dock.setIcon(devIcon)
   }
-  registerAudioProtocol(() => ctx.recordingsRoot)
-  registerIpc(ctx, () => mainWindow)
+  // The closure reads appCtx, not the nullable module-level ctx, so it stays typed non-null.
+  registerAudioProtocol(() => appCtx.recordingsRoot)
+  registerIpc(appCtx, () => mainWindow)
 
   // Replace Electron's default menu (bold "Electron" + near-empty File) with the
   // real Meetvox menu. Uses showWindow so a menu click re-creates the window if it
   // was closed to the tray.
-  installAppMenu(ctx, () => mainWindow, showWindow)
+  installAppMenu(appCtx, () => mainWindow, showWindow)
 
   createWindow()
   // The assignment to the module-level `tray` keeps the Tray alive (a local would
   // be GC'd and the icon would vanish). The `void` only suppresses the
   // "assigned but never read" lint warning.
-  tray = createTray(ctx, () => mainWindow, showWindow)
+  tray = createTray(appCtx, () => mainWindow, showWindow)
   void tray
 
   app.on('activate', () => {
