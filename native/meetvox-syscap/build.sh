@@ -22,5 +22,5 @@ build() {
 build "arm64-apple-macos14.4" "mac-arm64"
 build "x86_64-apple-macos14.4" "mac-x64"
 
-echo "done. Remember to codesign + notarize before distribution:"
+echo "done. It runs on this Mac as is. To hand it to other people, codesign + notarize it:"
 echo "  codesign --force --options runtime --sign \"Developer ID Application: …\" resources/mac-*/meetvox-syscap"

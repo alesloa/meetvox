@@ -63,7 +63,9 @@ resources/mac-arm64/ffmpeg -y -i sample.mp3 -ac 1 -ar 16000 -c:a pcm_s16le out.w
 npm run pack:syscap   # builds arm64 + x64 into resources/mac-*/
 ```
 
-Then codesign + notarize (Gatekeeper blocks unsigned helpers):
+A helper you build yourself runs on your own Mac as is: Gatekeeper only checks files that
+arrive with a download quarantine flag. To hand a build to other people, sign it with a
+Developer ID and notarize it:
 
 ```bash
 codesign --force --options runtime --sign "Developer ID Application: …" \
