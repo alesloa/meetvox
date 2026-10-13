@@ -13,7 +13,8 @@ import { parseWhisperOutput } from './whisper'
 import { WHISPER_INPUT_RATE } from '@shared/constants'
 import { normalizeServerUrl, type CloudProvider } from '@shared/transcription'
 
-export type Transcribe = (wavPath: string) => Promise<string>
+/** Aborting `signal` cancels the current piece and rejects with an AbortError. */
+export type Transcribe = (wavPath: string, signal?: AbortSignal) => Promise<string>
 
 export const FIX_IT = 'Settings → Transcription'
 
@@ -107,12 +108,14 @@ async function post(
   url: string,
   form: FormData,
   headers: Record<string, string>,
-  unreachable: (code: string) => string
+  unreachable: (code: string) => string,
+  signal: AbortSignal | undefined
 ): Promise<{ status: number; ok: boolean; json: unknown; text: string }> {
   let res: Response
   try {
-    res = await fetch(url, { method: 'POST', body: form, headers })
+    res = await fetch(url, { method: 'POST', body: form, headers, signal })
   } catch (e) {
+    if (signal?.aborted) throw e // a stop, not a network problem
     throw new Error(unreachable(failureCode(e)))
   }
   const text = await res.text()
@@ -145,6 +148,7 @@ function formWith(wav: Buffer, name: string, fields: Record<string, string>): Fo
 async function transcribeInPieces(
   wavPath: string,
   maxBytes: number | undefined,
+  signal: AbortSignal | undefined,
   send: (wav: Buffer, name: string) => Promise<string>
 ): Promise<string> {
   const name = basename(wavPath)
@@ -152,6 +156,7 @@ async function transcribeInPieces(
   const pieces = maxBytes ? splitWav(buf, maxBytes) : [buf]
   const texts: string[] = []
   for (let i = 0; i < pieces.length; i++) {
+    signal?.throwIfAborted()
     const pieceName = pieces.length > 1 ? name.replace(/\.wav$/i, `_part${i + 1}.wav`) : name
     texts.push(parseWhisperOutput(await send(pieces[i], pieceName)))
   }
@@ -164,15 +169,16 @@ async function transcribeInPieces(
 export function serverTranscriber(opts: { baseUrl: string; maxUploadBytes?: number }): Transcribe {
   const base = normalizeServerUrl(opts.baseUrl)
   const where = `The Whisper server at ${base}`
-  return (wavPath) =>
-    transcribeInPieces(wavPath, opts.maxUploadBytes, async (wav, name) => {
+  return (wavPath, signal) =>
+    transcribeInPieces(wavPath, opts.maxUploadBytes, signal, async (wav, name) => {
       // language=auto matches the on-device engine; whisper-server otherwise defaults to English.
       const res = await post(
         `${base}/inference`,
         formWith(wav, name, { response_format: 'json', language: 'auto' }),
         {},
         (code) =>
-          `Can't reach the Whisper server at ${base} (${code}). Make sure it's running, or change the address in ${FIX_IT}.`
+          `Can't reach the Whisper server at ${base} (${code}). Make sure it's running, or change the address in ${FIX_IT}.`,
+        signal
       )
       if (!res.ok) {
         const detail = apiMessage(res.json, res.text)
@@ -197,13 +203,14 @@ export function cloudTranscriber(opts: {
   model: string
 }): Transcribe {
   const { provider, apiKey, model } = opts
-  return (wavPath) =>
-    transcribeInPieces(wavPath, provider.maxUploadBytes, async (wav, name) => {
+  return (wavPath, signal) =>
+    transcribeInPieces(wavPath, provider.maxUploadBytes, signal, async (wav, name) => {
       const res = await post(
         `${provider.baseUrl}/audio/transcriptions`,
         formWith(wav, name, { model, response_format: 'json' }),
         { Authorization: `Bearer ${apiKey}` },
-        (code) => `Can't reach ${provider.label} (${code}). Check your internet connection.`
+        (code) => `Can't reach ${provider.label} (${code}). Check your internet connection.`,
+        signal
       )
       if (res.status === 401) {
         throw new Error(

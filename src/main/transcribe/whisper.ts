@@ -42,14 +42,16 @@ export interface WhisperOptions {
   wavPath: string
   /** Whisper language; Python used 'auto'. */
   language?: string
+  /** Aborting kills whisper-cli and rejects with an AbortError. */
+  signal?: AbortSignal
 }
 
 /** Spawn whisper-cli on a 16 kHz mono wav and return the parsed transcript text. */
 export function transcribe(opts: WhisperOptions): Promise<string> {
-  const { whisperPath, modelPath, wavPath, language = 'auto' } = opts
+  const { whisperPath, modelPath, wavPath, language = 'auto', signal } = opts
   return new Promise((resolve, reject) => {
     const args = ['-m', modelPath, '-f', wavPath, '-l', language, '-nt']
-    const proc = spawn(whisperPath, args)
+    const proc = spawn(whisperPath, args, { signal })
     let stdout = ''
     let stderr = ''
     // Decode as a stream so a UTF-8 character split across two reads stays whole.

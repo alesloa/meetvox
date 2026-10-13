@@ -44,8 +44,8 @@ export async function resolveEngine(deps: EngineDeps): Promise<Engine> {
       const modelPath = await deps.ensureLocalModel(model)
       return {
         label: `${ENGINE_LABELS.local} (${model.label})`,
-        transcribe: (wavPath) =>
-          whisperTranscribe({ whisperPath: deps.whisperPath, modelPath, wavPath })
+        transcribe: (wavPath, signal) =>
+          whisperTranscribe({ whisperPath: deps.whisperPath, modelPath, wavPath, signal })
       }
     }
     case 'server': {

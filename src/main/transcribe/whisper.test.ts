@@ -21,6 +21,23 @@ describe('transcribe — reads whisper-cli stdout', () => {
       }
     }
   )
+
+  it.skipIf(process.platform === 'win32')('a stop kills whisper-cli right away', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'meetvox-whisper-'))
+    try {
+      const fake = join(dir, 'slow-whisper')
+      writeFileSync(fake, '#!/bin/sh\nexec sleep 30\n')
+      chmodSync(fake, 0o755)
+      const stop = new AbortController()
+      const started = Date.now()
+      const run = transcribe({ whisperPath: fake, modelPath: 'm.bin', wavPath: 'a.wav', signal: stop.signal })
+      setTimeout(() => stop.abort(), 100)
+      await expect(run).rejects.toThrow()
+      expect(Date.now() - started).toBeLessThan(5000)
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
 })
 
 describe('parseWhisperOutput — normalizes whisper-cli output into the channel text', () => {

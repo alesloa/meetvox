@@ -224,3 +224,21 @@ describe('cloudTranscriber — OpenAI-compatible /audio/transcriptions', () => {
     ).rejects.toThrow("Can't reach Groq (ECONNREFUSED). Check your internet connection.")
   })
 })
+
+describe('a stop cancels the request', () => {
+  it('rejects as a stop, not as an unreachable server', async () => {
+    const held: ServerResponse[] = []
+    const s = await startServer((_seen, res) => held.push(res)) // never answers
+    try {
+      const stop = new AbortController()
+      const run = serverTranscriber({ baseUrl: s.url })(wavPath, stop.signal)
+      setTimeout(() => stop.abort(), 100)
+      const err: unknown = await run.catch((e: unknown) => e)
+      expect(err).toBeInstanceOf(Error)
+      expect((err as Error).name).toBe('AbortError')
+    } finally {
+      for (const res of held) res.end()
+      await s.close()
+    }
+  })
+})
