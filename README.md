@@ -45,7 +45,7 @@ API keys are stored in the operating system's secure vault (`safeStorage`), used
 
 ## Requirements
 
-- Node.js LTS
+- Node.js 22.12 or later, to build from source (Electron 44's npm package needs it)
 - macOS 13.3 or later, Apple silicon or Intel. macOS 14.4 or later for the no-driver capture path (earlier macOS falls back to a BlackHole virtual cable)
 - Windows 10 or 11, x64. Nothing else to install: whisper.cpp and ffmpeg ship inside the app, and they need no Visual C++ runtime
 
