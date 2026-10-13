@@ -28,7 +28,10 @@ mac:
   extraResources:
     - from: resources/mac-${arch}
       to: mac-${arch}
-      filter: ['**/*']
+      filter: ['**/*', '!README.md']
+    # License texts + notices for the bundled whisper.cpp / FFmpeg builds.
+    - from: resources/licenses
+      to: licenses
     # Menu-bar (Tray) template icon — resolved at <resourcesPath>/build/ by tray.ts.
     - from: build
       to: build
@@ -53,16 +56,17 @@ win:
   extraResources:
     - from: resources/win-${arch}
       to: win-${arch}
-      filter: ['**/*']
+      filter: ['**/*', '!README.md']
+    - from: resources/licenses
+      to: licenses
     # Tray icon — resolved at <resourcesPath>/build/ by tray.ts (not template-tinted on Windows).
     - from: build
       to: build
       filter: ['tray-Template*.png']
   target:
     - nsis
-  # whisper-cli is built CPU-only and statically linked, so no VC++ runtime is
-  # strictly required. If a future GPU build needs it, bundle vcredist via
-  # nsis.include and silently install in the installer script.
+  # whisper-cli.exe + ffmpeg.exe are built with mingw-w64 (scripts/binaries/), CPU only,
+  # with GCC's runtime linked in, so no Visual C++ redistributable is needed.
 
 nsis:
   oneClick: false
