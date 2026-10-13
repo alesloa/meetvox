@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { createJobSlot, BUSY_MESSAGE } from './job'
+import { createJobSlot, untilStopped, BUSY_MESSAGE } from './job'
 import type { TranscribeEvent } from '@shared/types'
 
 function slotWithEvents(): { slot: ReturnType<typeof createJobSlot>; events: TranscribeEvent[] } {
@@ -75,5 +75,19 @@ describe('createJobSlot — one transcription at a time, stoppable', () => {
     const { slot, events } = slotWithEvents()
     slot.stop()
     expect(events).toEqual([])
+  })
+})
+
+describe('untilStopped — a step that ignores the stop still ends the job', () => {
+  it('rejects as soon as the signal aborts, without waiting for the step', async () => {
+    const stop = new AbortController()
+    const never = new Promise<string>(() => {}) // e.g. a model download still running
+    const waiting = untilStopped(never, stop.signal)
+    stop.abort()
+    await expect(waiting).rejects.toThrow()
+  })
+
+  it('passes the result through when there is no stop', async () => {
+    expect(await untilStopped(Promise.resolve('engine'), new AbortController().signal)).toBe('engine')
   })
 })

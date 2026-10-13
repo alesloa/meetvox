@@ -20,6 +20,19 @@ export interface JobSlot {
   stop(): void
 }
 
+/**
+ * Wait for a step that can't be cancelled (a model download), but give up the
+ * moment the job is stopped. The step keeps running on its own.
+ */
+export function untilStopped<T>(step: Promise<T>, signal: AbortSignal): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const onAbort = (): void => reject(signal.reason)
+    if (signal.aborted) return onAbort()
+    signal.addEventListener('abort', onAbort, { once: true })
+    step.then(resolve, reject).finally(() => signal.removeEventListener('abort', onAbort))
+  })
+}
+
 function event(meetingDir: string, phase: TranscribePhase, message: string): TranscribeEvent {
   return { meetingDir, phase, message, chunkIndex: 0, chunkCount: 0 }
 }

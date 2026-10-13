@@ -13,8 +13,7 @@ import type {
   StartRecordingResult,
   StopRecordingResult,
   Gains,
-  TranscribeResult,
-  TranscribeProgress,
+  TranscribeMode,
   DeviceList,
   EngineTestResult,
   LocalModelStatus,
@@ -40,6 +39,8 @@ import { createSystemSource, type SystemSource } from './audio/systemSource'
 import { ensureModel, isModelPresent, modelFilePath } from './models/download'
 import { makeRunners, runPipeline } from './transcribe/pipeline'
 import { resolveEngine, testEngine, type Engine } from './transcribe/engine'
+import { BUSY_MESSAGE, createJobSlot, untilStopped, type JobControl } from './transcribe/job'
+import { listChunks } from './transcribe/progress'
 import { importFolder, importFile, transcribeSingleTrack } from './import'
 import { generateSummary, getSummary } from './summary'
 import { getNotes, saveNotes } from './notes'
@@ -80,10 +81,10 @@ export function registerIpc(ctx: AppContext, getWindow: () => BrowserWindow | nu
 
   ipcMain.handle(Commands.getPlatform, () => ctx.platform)
 
-  ipcMain.handle(
-    Commands.hasRecordings,
-    () => ctx.recorder.getSessionDir() !== null || newestMeeting(ctx.recordingsRoot) !== null
-  )
+  const lastRecording = (): string | null =>
+    ctx.recorder.getSessionDir() ?? newestMeeting(ctx.recordingsRoot)
+
+  ipcMain.handle(Commands.lastRecording, lastRecording)
 
   ipcMain.handle(Commands.listDevices, (): Promise<DeviceList> => enumerateDevices(ctx.platform))
 
@@ -188,17 +189,54 @@ export function registerIpc(ctx: AppContext, getWindow: () => BrowserWindow | nu
     })
 
   /** The engine from saved settings. On-device first reports the model check/download. */
-  const startEngine = (): Promise<Engine> => {
+  const startEngine = (job: JobControl): Promise<Engine> => {
     const settings = ctx.settings.transcription
     if (settings.engine === 'local') {
-      send(Events.transcribeProgress, {
+      job.progress({
         phase: 'needs-model',
         message: 'Checking transcription model…',
         chunkIndex: 0,
         chunkCount: 0
       })
     }
-    return engineFor(settings)
+    // A model download can't be cancelled; a stop ends the job and lets it finish alone.
+    return untilStopped(engineFor(settings), job.signal)
+  }
+
+  // One transcription at a time; Stop works from any page.
+  const jobs = createJobSlot((e) => send(Events.transcribeProgress, e))
+
+  /** Recorded or folder-imported meetings go chunk by chunk; a single-file import is one piece. */
+  const transcribeMeeting = async (dir: string, mode: TranscribeMode, job: JobControl): Promise<void> => {
+    const engine = await startEngine(job)
+    if (listChunks(dir).length > 0) {
+      const runners = makeRunners({ ffmpegPath: ctx.binary('ffmpeg'), transcribe: engine.transcribe })
+      await runPipeline(dir, runners, {
+        engineLabel: engine.label,
+        onProgress: job.progress,
+        signal: job.signal,
+        resume: mode === 'continue'
+      })
+      return
+    }
+    const audio = join(dir, 'audio.wav')
+    if (!existsSync(audio)) throw new Error('This meeting has no audio to transcribe.')
+    job.progress({
+      phase: 'running',
+      message: `Transcribing imported audio with ${engine.label}…`,
+      chunkIndex: 1,
+      chunkCount: 1
+    })
+    await transcribeSingleTrack(dir, audio, {
+      transcribe: (wav) => engine.transcribe(wav, job.signal),
+      now: () => new Date()
+    })
+    job.progress({
+      phase: 'done',
+      message: `Imported audio transcribed with ${engine.label}`,
+      chunkIndex: 0,
+      chunkCount: 0
+    })
   }
 
   ipcMain.handle(
@@ -231,23 +269,27 @@ export function registerIpc(ctx: AppContext, getWindow: () => BrowserWindow | nu
 
   ipcMain.handle(
     Commands.transcribe,
-    async (_e, { meetingDir }: { meetingDir?: string }): Promise<TranscribeResult> => {
-      const dir = meetingDir ?? ctx.recorder.getSessionDir() ?? newestMeeting(ctx.recordingsRoot)
+    async (
+      _e,
+      { meetingDir, mode }: { meetingDir?: string; mode: TranscribeMode }
+    ): Promise<{ meetingDir: string; stopped: boolean }> => {
+      const dir = meetingDir ?? lastRecording()
       if (!dir) throw new Error('No recording to transcribe yet.')
-
-      const engine = await startEngine()
-      const runners = makeRunners({ ffmpegPath: ctx.binary('ffmpeg'), transcribe: engine.transcribe })
-
-      return runPipeline(dir, runners, {
-        engineLabel: engine.label,
-        onProgress: (p) => send(Events.transcribeProgress, p)
-      })
+      if (ctx.recorder.isRecording() && ctx.recorder.getSessionDir() === dir) {
+        throw new Error('This meeting is still recording. Stop the recording first.')
+      }
+      const outcome = await jobs.run(dir, (job) => transcribeMeeting(dir, mode, job))
+      return { meetingDir: dir, stopped: outcome === 'stopped' }
     }
   )
+
+  ipcMain.handle(Commands.stopTranscription, () => jobs.stop())
+  ipcMain.handle(Commands.getTranscriptionStatus, () => jobs.current())
 
   ipcMain.handle(
     Commands.importAudio,
     async (_e, { kind }: { kind: 'file' | 'folder' }): Promise<{ meetingDir: string }> => {
+      if (jobs.current()) throw new Error(BUSY_MESSAGE)
       // Pick the source (read-only). Cancel → no-op, empty meetingDir (no throw).
       const pick = await dialog.showOpenDialog(
         kind === 'file'
@@ -276,59 +318,23 @@ export function registerIpc(ctx: AppContext, getWindow: () => BrowserWindow | nu
       if (pick.canceled || pick.filePaths.length === 0) return { meetingDir: '' }
       const picked = pick.filePaths[0]
 
-      const onProgress = (p: TranscribeProgress): void => send(Events.transcribeProgress, p)
+      // A folder of stereo chunks → You/Other pipeline; a single file → one decoded wav.
+      const { meetingDir } =
+        kind === 'folder'
+          ? importFolder(picked, ctx.recordingsRoot, new Date())
+          : await importFile(picked, ctx.recordingsRoot, new Date(), {
+              spawn,
+              ffmpegPath: ctx.binary('ffmpeg')
+            })
 
-      // Resolved before importing, so a missing key/address fails with no orphan folder.
-      const engine = await startEngine()
-
-      // Remove a half-created meeting folder if transcription fails after import,
-      // so a failed import never leaves an orphan in the library. Uses the
-      // path-guarded delete (inside recordingsRoot + meeting_* basename).
-      const cleanupOnFailure = async (dir: string, run: () => Promise<void>): Promise<void> => {
-        try {
-          await run()
-        } catch (e) {
-          await deleteMeeting(dir, ctx.recordingsRoot).catch(() => {})
-          throw e
-        }
+      // A failed transcription removes the half-created meeting (path-guarded delete),
+      // so a failed import never leaves an orphan. A stop keeps it to continue later.
+      try {
+        await jobs.run(meetingDir, (job) => transcribeMeeting(meetingDir, 'fresh', job))
+      } catch (e) {
+        await deleteMeeting(meetingDir, ctx.recordingsRoot).catch(() => {})
+        throw e
       }
-
-      if (kind === 'folder') {
-        // Stereo chunks → standard You/Other pipeline.
-        const { meetingDir } = importFolder(picked, ctx.recordingsRoot, new Date())
-        await cleanupOnFailure(meetingDir, async () => {
-          const runners = makeRunners({
-            ffmpegPath: ctx.binary('ffmpeg'),
-            transcribe: engine.transcribe
-          })
-          await runPipeline(meetingDir, runners, { engineLabel: engine.label, onProgress })
-        })
-        return { meetingDir }
-      }
-
-      // Single file → decode to one wav, transcribe as a single neutral "Speaker".
-      const { meetingDir } = await importFile(picked, ctx.recordingsRoot, new Date(), {
-        spawn,
-        ffmpegPath: ctx.binary('ffmpeg')
-      })
-      await cleanupOnFailure(meetingDir, async () => {
-        onProgress({
-          phase: 'running',
-          message: `Transcribing imported audio with ${engine.label}…`,
-          chunkIndex: 1,
-          chunkCount: 1
-        })
-        await transcribeSingleTrack(meetingDir, join(meetingDir, 'audio.wav'), {
-          transcribe: engine.transcribe,
-          now: () => new Date()
-        })
-      })
-      onProgress({
-        phase: 'done',
-        message: `Imported audio transcribed with ${engine.label}`,
-        chunkIndex: 0,
-        chunkCount: 0
-      })
       return { meetingDir }
     }
   )

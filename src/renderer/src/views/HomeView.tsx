@@ -66,7 +66,7 @@ export function HomeView(): JSX.Element {
   // --- bootstrap + event subscriptions ---
   useEffect(() => {
     window.meetvox.getPlatform().then(setPlatform)
-    window.meetvox.hasRecordings().then(setHasRecording)
+    window.meetvox.lastRecording().then((dir) => setHasRecording(dir !== null))
     refreshDevices()
 
     const offLevels = window.meetvox.onLevels(setLevels)
@@ -220,7 +220,7 @@ export function HomeView(): JSX.Element {
     setError(null)
     setTranscribe({ phase: 'running', message: 'Starting…', chunkIndex: 0, chunkCount: 0 })
     try {
-      await window.meetvox.transcribe()
+      await window.meetvox.transcribe(undefined, 'fresh')
       // Surface the freshly transcribed meeting in the sidebar/library without a reload.
       await refreshMeetings()
     } catch (e) {

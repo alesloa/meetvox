@@ -20,8 +20,8 @@ import type {
   StartRecordingResult,
   StopRecordingResult,
   Summary,
-  TranscribeProgress,
-  TranscribeResult,
+  TranscribeEvent,
+  TranscribeMode,
   TranscriptEntry,
   TranscriptionSettings
 } from '@shared/types'
@@ -45,8 +45,14 @@ const api = {
   }): Promise<void> => ipcRenderer.invoke(Commands.startMonitor, args),
   stopMonitor: (): Promise<void> => ipcRenderer.invoke(Commands.stopMonitor),
   setGain: (gains: Gains): Promise<void> => ipcRenderer.invoke(Commands.setGain, gains),
-  transcribe: (meetingDir?: string): Promise<TranscribeResult> =>
-    ipcRenderer.invoke(Commands.transcribe, { meetingDir }),
+  transcribe: (
+    meetingDir: string | undefined,
+    mode: TranscribeMode
+  ): Promise<{ meetingDir: string; stopped: boolean }> =>
+    ipcRenderer.invoke(Commands.transcribe, { meetingDir, mode }),
+  stopTranscription: (): Promise<void> => ipcRenderer.invoke(Commands.stopTranscription),
+  getTranscriptionStatus: (): Promise<TranscribeEvent | null> =>
+    ipcRenderer.invoke(Commands.getTranscriptionStatus),
   importAudio: (kind: 'file' | 'folder'): Promise<{ meetingDir: string }> =>
     ipcRenderer.invoke(Commands.importAudio, { kind }),
   openMeetingFolder: (meetingDir?: string): Promise<void> =>
@@ -64,7 +70,7 @@ const api = {
   testTranscription: (settings: TranscriptionSettings): Promise<EngineTestResult> =>
     ipcRenderer.invoke(Commands.testTranscription, settings),
   getPlatform: (): Promise<'mac' | 'win'> => ipcRenderer.invoke(Commands.getPlatform),
-  hasRecordings: (): Promise<boolean> => ipcRenderer.invoke(Commands.hasRecordings),
+  lastRecording: (): Promise<string | null> => ipcRenderer.invoke(Commands.lastRecording),
   listMeetings: (): Promise<Meeting[]> => ipcRenderer.invoke(Commands.listMeetings),
   getMeeting: (dir: string): Promise<{ meeting: Meeting; entries: TranscriptEntry[] }> =>
     ipcRenderer.invoke(Commands.getMeeting, { dir }),
@@ -98,8 +104,8 @@ const api = {
 
   onLevels: (cb: (l: Levels) => void) => on<Levels>(Events.levels, cb),
   onRecorderStatus: (cb: (s: RecorderStatus) => void) => on<RecorderStatus>(Events.recorderStatus, cb),
-  onTranscribeProgress: (cb: (p: TranscribeProgress) => void) =>
-    on<TranscribeProgress>(Events.transcribeProgress, cb),
+  onTranscribeProgress: (cb: (p: TranscribeEvent) => void) =>
+    on<TranscribeEvent>(Events.transcribeProgress, cb),
   onModelDownloadProgress: (cb: (p: ModelDownloadProgress) => void) =>
     on<ModelDownloadProgress>(Events.modelDownloadProgress, cb),
   onTrayNavigate: (cb: (view: TrayView) => void) => on<TrayView>(Events.trayNavigate, cb),

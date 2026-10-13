@@ -18,8 +18,8 @@ import type {
   StartRecordingResult,
   StopRecordingResult,
   Summary,
-  TranscribeProgress,
-  TranscribeResult,
+  TranscribeEvent,
+  TranscribeMode,
   TranscriptEntry,
   TranscriptionSettings
 } from './types'
@@ -33,6 +33,8 @@ export const Commands = {
   stopMonitor: 'cmd:stopMonitor',
   setGain: 'cmd:setGain',
   transcribe: 'cmd:transcribe',
+  stopTranscription: 'cmd:stopTranscription',
+  getTranscriptionStatus: 'cmd:getTranscriptionStatus',
   importAudio: 'cmd:importAudio',
   openMeetingFolder: 'cmd:openMeetingFolder',
   openScreenRecorder: 'cmd:openScreenRecorder',
@@ -44,7 +46,7 @@ export const Commands = {
   downloadLocalModel: 'cmd:downloadLocalModel',
   testTranscription: 'cmd:testTranscription',
   getPlatform: 'cmd:getPlatform',
-  hasRecordings: 'cmd:hasRecordings',
+  lastRecording: 'cmd:lastRecording',
   listMeetings: 'cmd:listMeetings',
   getMeeting: 'cmd:getMeeting',
   renameMeeting: 'cmd:renameMeeting',
@@ -93,7 +95,15 @@ export interface CommandMap {
   }
   [Commands.stopMonitor]: { args: void; result: void }
   [Commands.setGain]: { args: Gains; result: void }
-  [Commands.transcribe]: { args: { meetingDir?: string }; result: TranscribeResult }
+  // Runs in the one job slot; refused while another meeting transcribes. A stop
+  // resolves with stopped: true and keeps the finished pieces for "continue".
+  [Commands.transcribe]: {
+    args: { meetingDir?: string; mode: TranscribeMode }
+    result: { meetingDir: string; stopped: boolean }
+  }
+  [Commands.stopTranscription]: { args: void; result: void }
+  // The running job's latest progress, so a page opened mid-run can show it.
+  [Commands.getTranscriptionStatus]: { args: void; result: TranscribeEvent | null }
   [Commands.importAudio]: { args: { kind: 'file' | 'folder' }; result: { meetingDir: string } }
   [Commands.openMeetingFolder]: { args: { meetingDir?: string }; result: void }
   // macOS only: opens the Cmd+Shift+5 screenshot / screen-recording toolbar.
@@ -111,7 +121,8 @@ export interface CommandMap {
   // Sends 1 s of silence through the given (unsaved) engine config. Never throws.
   [Commands.testTranscription]: { args: TranscriptionSettings; result: EngineTestResult }
   [Commands.getPlatform]: { args: void; result: 'mac' | 'win' }
-  [Commands.hasRecordings]: { args: void; result: boolean }
+  // The current or newest recording's folder, or null before the first one.
+  [Commands.lastRecording]: { args: void; result: string | null }
   [Commands.listMeetings]: { args: void; result: Meeting[] }
   [Commands.getMeeting]: { args: { dir: string }; result: { meeting: Meeting; entries: TranscriptEntry[] } }
   [Commands.renameMeeting]: { args: { dir: string; name: string }; result: void }
@@ -138,7 +149,7 @@ export interface CommandMap {
 export interface EventMap {
   [Events.levels]: Levels
   [Events.recorderStatus]: RecorderStatus
-  [Events.transcribeProgress]: TranscribeProgress
+  [Events.transcribeProgress]: TranscribeEvent
   [Events.modelDownloadProgress]: ModelDownloadProgress
   [Events.trayNavigate]: TrayView
   [Events.trayAction]: TrayAction
