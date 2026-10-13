@@ -5,6 +5,7 @@ import { existsSync, readdirSync, readFileSync, writeFileSync, rmSync } from 'fs
 import { join, resolve, basename, sep } from 'path'
 import { readWavDuration } from './audio/wav'
 import { parseMeta, serializeMeta, defaultMetaFromFolder } from './meta'
+import { progressCounts } from './transcribe/progress'
 import type { Meeting, TranscriptEntry } from '@shared/types'
 
 const MEETING_RE = /^meeting_\d{8}_\d{6}$/
@@ -51,7 +52,8 @@ async function readOrBackfillMeta(dir: string): Promise<Meeting> {
     ...meta,
     dir,
     hasTranscript: existsSync(join(dir, 'transcript.json')),
-    hasSummary: existsSync(join(dir, 'summary.json'))
+    hasSummary: existsSync(join(dir, 'summary.json')),
+    progress: progressCounts(dir)
   }
 }
 

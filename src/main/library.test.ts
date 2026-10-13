@@ -101,6 +101,20 @@ describe('listMeetings', () => {
     expect(list[0].hasSummary).toBe(true)
   })
 
+  test('reports how far a stopped transcription got', async () => {
+    const dir = makeMeetingDir(tmpRoot, 'meeting_20260609_120002')
+    for (const n of ['000', '001', '002']) writeFileSync(join(dir, `chunk_${n}.wav`), 'x')
+    writeFileSync(join(dir, 'transcript.progress.json'), JSON.stringify({ pieces: { 'chunk_000.wav': [] } }))
+    const list = await listMeetings(tmpRoot)
+    expect(list[0].progress).toEqual({ done: 1, total: 3 })
+  })
+
+  test('progress is null when no transcription was stopped', async () => {
+    makeMeetingDir(tmpRoot, 'meeting_20260609_120003')
+    const list = await listMeetings(tmpRoot)
+    expect(list[0].progress).toBeNull()
+  })
+
   test('returns empty array when root does not exist', async () => {
     const list = await listMeetings(join(tmpRoot, 'nonexistent'))
     expect(list).toEqual([])

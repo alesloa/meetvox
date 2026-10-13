@@ -40,6 +40,7 @@ export type TranscribePhase =
   | 'downloading-model'
   | 'running'
   | 'done'
+  | 'stopped'
   | 'error'
 
 export interface TranscribeProgress {
@@ -49,6 +50,14 @@ export interface TranscribeProgress {
   chunkIndex: number
   chunkCount: number
 }
+
+/** A progress update as the renderer gets it: tagged with the meeting being transcribed. */
+export interface TranscribeEvent extends TranscribeProgress {
+  meetingDir: string
+}
+
+/** Continue skips the pieces a stopped run saved; fresh starts over. */
+export type TranscribeMode = 'fresh' | 'continue'
 
 export interface ModelDownloadProgress {
   /** Model file being downloaded (a LOCAL_MODELS `file`). */
@@ -116,6 +125,8 @@ export interface Meeting extends MeetingMeta {
   dir: string              // absolute meeting folder path
   hasTranscript: boolean
   hasSummary: boolean
+  /** A stopped transcription's saved pieces, or null when none is waiting to continue. */
+  progress: { done: number; total: number } | null
 }
 
 /** Playable audio sources for a meeting: meetvox-audio:// URLs + per-source/total durations. */
