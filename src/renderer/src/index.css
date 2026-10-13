@@ -16,7 +16,7 @@
   --radius: 0.5rem;
 }
 .dark {
-  /* Ale's preferred dark palette: bg #141414 → panel #1e1e1e → surface #262626,
+  /* Dark palette: bg #141414 → panel #1e1e1e → surface #262626,
      text #cccccc / muted #9d9d9d, green accent #22c55e, error #ef4444. */
   --background: 0 0% 8%;          --foreground: 0 0% 80%;
   --card: 0 0% 12%;             --card-foreground: 0 0% 80%;
