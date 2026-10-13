@@ -3,6 +3,7 @@ import { mkdtempSync, rmSync, writeFileSync, readFileSync, existsSync } from 'fs
 import { tmpdir } from 'os'
 import { join, basename } from 'path'
 import { processMeeting, runPipeline, type PipelineRunners } from './pipeline'
+import { PROGRESS_FILE, readProgress, savePiece } from './progress'
 import { encodeChunk } from '../audio/wav'
 
 let dir: string
@@ -74,6 +75,89 @@ describe('processMeeting — orchestration (faithful to process_meeting)', () =>
     }
     const entries = await processMeeting(dir, runners)
     expect(entries).toEqual([{ time: 0, speaker: 'You', text: 'real' }])
+  })
+})
+
+/** Runners where only the left (You) channel speaks; records each chunk it transcribed. */
+function recordingRunners(transcribed: string[]): PipelineRunners {
+  return {
+    split: async (input, left, right) => {
+      writeFileSync(left, basename(input))
+      writeFileSync(right, basename(input))
+    },
+    level: async () => -10,
+    transcribe: async (wav) => {
+      if (!wav.includes('left')) return ''
+      const chunk = readFileSync(wav, 'utf8')
+      transcribed.push(chunk)
+      return `text of ${chunk}`
+    }
+  }
+}
+
+describe('processMeeting — stop, continue, start over', () => {
+  beforeEach(() => {
+    writeChunk(join(dir, 'chunk_000.wav'), 1)
+    writeChunk(join(dir, 'chunk_001.wav'), 1)
+  })
+
+  it('saves each finished piece to the progress file', async () => {
+    await processMeeting(dir, recordingRunners([]))
+    expect(Object.keys(readProgress(dir))).toEqual(['chunk_000.wav', 'chunk_001.wav'])
+    expect(readProgress(dir)['chunk_000.wav']).toEqual([
+      { time: 0, speaker: 'You', text: 'text of chunk_000.wav' }
+    ])
+  })
+
+  it('continue skips the saved pieces and keeps their text', async () => {
+    savePiece(dir, 'chunk_000.wav', [{ time: 0, speaker: 'You', text: 'saved earlier' }])
+    const transcribed: string[] = []
+    const entries = await processMeeting(dir, recordingRunners(transcribed), { resume: true })
+    expect(transcribed).toEqual(['chunk_001.wav'])
+    expect(entries.map((e) => e.text)).toEqual(['saved earlier', 'text of chunk_001.wav'])
+  })
+
+  it('start over ignores and replaces the saved pieces', async () => {
+    savePiece(dir, 'chunk_000.wav', [{ time: 0, speaker: 'You', text: 'saved earlier' }])
+    const transcribed: string[] = []
+    const entries = await processMeeting(dir, recordingRunners(transcribed))
+    expect(transcribed).toEqual(['chunk_000.wav', 'chunk_001.wav'])
+    expect(entries.map((e) => e.text)).not.toContain('saved earlier')
+  })
+
+  it('a stop rejects, keeps the finished pieces, and writes no transcript', async () => {
+    const stop = new AbortController()
+    const runners = recordingRunners([])
+    const transcribe = runners.transcribe
+    runners.transcribe = async (wav, signal) => {
+      if (readFileSync(wav, 'utf8') === 'chunk_001.wav') {
+        stop.abort()
+        signal?.throwIfAborted()
+      }
+      return transcribe(wav, signal)
+    }
+    await expect(runPipeline(dir, runners, { signal: stop.signal })).rejects.toThrow()
+    expect(Object.keys(readProgress(dir))).toEqual(['chunk_000.wav'])
+    expect(existsSync(join(dir, 'transcript.json'))).toBe(false)
+  })
+
+  it('passes the stop signal to the engine', async () => {
+    const stop = new AbortController()
+    const seen: (AbortSignal | undefined)[] = []
+    const runners = recordingRunners([])
+    runners.transcribe = async (_wav, signal) => {
+      seen.push(signal)
+      return ''
+    }
+    await processMeeting(dir, runners, { signal: stop.signal })
+    expect(seen.length).toBeGreaterThan(0)
+    expect(seen.every((s) => s === stop.signal)).toBe(true)
+  })
+
+  it('runPipeline deletes the progress file once the transcript is written', async () => {
+    await runPipeline(dir, recordingRunners([]))
+    expect(existsSync(join(dir, 'transcript.json'))).toBe(true)
+    expect(existsSync(join(dir, PROGRESS_FILE))).toBe(false)
   })
 })
 

@@ -4,12 +4,13 @@
 // transcription engine) is injected via PipelineRunners so the orchestration is
 // unit-testable; makeRunners() wires ffmpeg plus whichever engine settings chose.
 
-import { readdirSync, readFileSync, writeFileSync, mkdtempSync, rmSync } from 'fs'
+import { readFileSync, writeFileSync, mkdtempSync, rmSync } from 'fs'
 import { join, basename } from 'path'
 import { tmpdir } from 'os'
 import { readWavDuration } from '../audio/wav'
 import { splitStereoToMono } from './splitChannels'
 import { getAudioLevel, isSilent } from './silence'
+import { clearProgress, listChunks, readProgress, savePiece } from './progress'
 import {
   sortEntries,
   mergeConsecutiveSpeakers,
@@ -24,7 +25,7 @@ import type { TranscriptEntry, TranscribeResult, TranscribeProgress } from '@sha
 export interface PipelineRunners {
   split(inputWav: string, leftOut: string, rightOut: string): Promise<void>
   level(wav: string): Promise<number>
-  transcribe(wav: string): Promise<string>
+  transcribe(wav: string, signal?: AbortSignal): Promise<string>
 }
 
 export interface PipelineOptions {
@@ -32,6 +33,10 @@ export interface PipelineOptions {
   now?: () => Date
   /** Appended to progress messages, e.g. "Groq (whisper-large-v3-turbo)". */
   engineLabel?: string
+  /** Stops the run between steps and cancels the engine's current piece. */
+  signal?: AbortSignal
+  /** Continue: reuse the pieces a stopped run saved. Otherwise they're thrown away. */
+  resume?: boolean
 }
 
 function withEngine(message: string, label: string | undefined): string {
@@ -50,14 +55,10 @@ export function makeRunners(deps: {
   }
 }
 
-function listChunks(meetingDir: string): string[] {
-  return readdirSync(meetingDir)
-    .filter((f) => /^chunk_.*\.wav$/.test(f))
-    .sort()
-    .map((f) => join(meetingDir, f))
-}
-
-/** Process all chunks -> sorted transcript entries (left=You, right=Other). */
+/**
+ * Process all chunks -> sorted transcript entries (left=You, right=Other). Each
+ * finished chunk is saved to the progress file, so a stopped run can continue.
+ */
 export async function processMeeting(
   meetingDir: string,
   runners: PipelineRunners,
@@ -72,11 +73,16 @@ export async function processMeeting(
   const first = readWavDuration(readFileSync(chunks[0]))
   const chunkDuration = first.durationSec
 
+  if (!opts.resume) clearProgress(meetingDir)
+  const saved = readProgress(meetingDir)
+
   const entries: TranscriptEntry[] = []
   const tmp = mkdtempSync(join(tmpdir(), 'meetvox-transcribe-'))
   try {
     for (let i = 0; i < chunks.length; i++) {
+      opts.signal?.throwIfAborted()
       const chunkPath = chunks[i]
+      const piece = basename(chunkPath)
       const chunkStart = i * chunkDuration
       const leftPath = join(tmp, `left_${i + 1}.wav`)
       const rightPath = join(tmp, `right_${i + 1}.wav`)
@@ -88,6 +94,12 @@ export async function processMeeting(
         chunkCount: chunks.length
       })
 
+      const done = saved[piece]
+      if (done) {
+        entries.push(...done)
+        continue
+      }
+
       await runners.split(chunkPath, leftPath, rightPath)
 
       // The two channel level checks are independent ffmpeg runs — run concurrently.
@@ -96,16 +108,20 @@ export async function processMeeting(
         runners.level(rightPath)
       ])
 
+      const pieceEntries: TranscriptEntry[] = []
       // Left channel = mic = "You"
       if (!isSilent(leftLevel)) {
-        const text = await runners.transcribe(leftPath)
-        if (text) entries.push({ time: chunkStart, speaker: SPEAKER_LEFT, text })
+        const text = await runners.transcribe(leftPath, opts.signal)
+        if (text) pieceEntries.push({ time: chunkStart, speaker: SPEAKER_LEFT, text })
       }
       // Right channel = system = "Other"
       if (!isSilent(rightLevel)) {
-        const text = await runners.transcribe(rightPath)
-        if (text) entries.push({ time: chunkStart, speaker: SPEAKER_RIGHT, text })
+        const text = await runners.transcribe(rightPath, opts.signal)
+        if (text) pieceEntries.push({ time: chunkStart, speaker: SPEAKER_RIGHT, text })
       }
+      opts.signal?.throwIfAborted()
+      savePiece(meetingDir, piece, pieceEntries)
+      entries.push(...pieceEntries)
     }
   } finally {
     rmSync(tmp, { recursive: true, force: true })
@@ -137,6 +153,7 @@ export async function runPipeline(
   const jsonPath = join(meetingDir, 'transcript.json')
   writeFileSync(txtPath, buildTranscriptTxt(merged, meetingName, generatedAt))
   writeFileSync(jsonPath, buildTranscriptJson(merged))
+  clearProgress(meetingDir)
 
   opts.onProgress?.({
     phase: 'done',
