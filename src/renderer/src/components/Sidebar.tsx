@@ -25,8 +25,9 @@ export function Sidebar(): JSX.Element {
   const [expanded, setExpanded] = useState(true)
   // Whole "Meetings" section collapse + per-recency-group collapse. Session-local
   // (resets on relaunch); the sidebar width is the only collapse state persisted.
+  // Every recency group starts collapsed except Today.
   const [meetingsOpen, setMeetingsOpen] = useState(true)
-  const [closedGroups, setClosedGroups] = useState<Record<string, boolean>>({})
+  const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({ today: true })
   const seededRef = useRef(false)
   const { route, navigate } = useRouter()
   const { meetings, refresh } = useMeetings()
@@ -36,7 +37,7 @@ export function Sidebar(): JSX.Element {
   // Recomputed only when the list changes; day-granular `now` is fine to re-read.
   const groups = useMemo(() => groupByRecency(meetings, new Date()), [meetings])
   const toggleGroup = (key: string): void =>
-    setClosedGroups((c) => ({ ...c, [key]: !c[key] }))
+    setOpenGroups((o) => ({ ...o, [key]: !o[key] }))
 
   // Seed the collapsed state from persisted settings, once, on first load.
   useEffect(() => {
@@ -125,7 +126,7 @@ export function Sidebar(): JSX.Element {
 
           {meetingsOpen &&
             groups.map((g) => {
-              const open = !closedGroups[g.key]
+              const open = !!openGroups[g.key]
               return (
                 <div key={g.key} className="flex flex-col">
                   {/* Date-group header — indented one level right of "Meetings".
