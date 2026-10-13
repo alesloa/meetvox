@@ -200,6 +200,14 @@ export function MeetingView({ meetingDir }: MeetingViewProps): JSX.Element {
     )
   }
 
+  const transcribeControls = (
+    <TranscribeControls
+      meetingDir={meetingDir}
+      progress={meeting.progress}
+      hasTranscript={meeting.hasTranscript}
+    />
+  )
+
   return (
     <div className="flex h-full flex-col">
       {/* Header */}
@@ -362,23 +370,11 @@ export function MeetingView({ meetingDir }: MeetingViewProps): JSX.Element {
                 // No transcript yet: the controls sit right where the transcript will appear.
                 <div className="flex h-full flex-col items-center justify-center gap-3 px-6">
                   <p className="text-sm text-muted-foreground">No transcript yet.</p>
-                  <div className="w-full max-w-sm">
-                    <TranscribeControls
-                      meetingDir={meetingDir}
-                      progress={meeting.progress}
-                      hasTranscript={meeting.hasTranscript}
-                    />
-                  </div>
+                  <div className="w-full max-w-sm">{transcribeControls}</div>
                 </div>
               ) : (
                 <>
-                  <div className="shrink-0 px-4 pt-3">
-                    <TranscribeControls
-                      meetingDir={meetingDir}
-                      progress={meeting.progress}
-                      hasTranscript={meeting.hasTranscript}
-                    />
-                  </div>
+                  <div className="shrink-0 px-4 pt-3">{transcribeControls}</div>
                   <TranscriptList entries={entries} channelMapped={meeting.channelMapped} />
                 </>
               )

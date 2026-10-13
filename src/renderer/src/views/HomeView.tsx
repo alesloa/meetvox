@@ -206,8 +206,6 @@ export function HomeView(): JSX.Element {
     }
   }, [])
 
-  // Only recording locks the device pickers; a transcription never blocks recording.
-  const controlsDisabled = recording
   const systemHint =
     platform === 'mac'
       ? 'Two ways to capture system audio: "System Audio (built-in)" taps the output directly (no setup; macOS may ask for audio-recording permission once), or "BlackHole 2ch" if you route output through a Multi-Output Device that includes BlackHole.'
@@ -219,7 +217,7 @@ export function HomeView(): JSX.Element {
   return (
     <div className="flex h-full flex-col">
       {showWelcome ? (
-        /* Welcome empty state — driven by real hasRecordings() result */
+        /* Welcome empty state — driven by real lastRecording() result */
         <div className="flex flex-1 flex-col items-center justify-center gap-3">
           <AudioLines className="h-10 w-10 text-rec-green" />
           <h1 className="text-xl font-semibold text-foreground">Meetvox</h1>
@@ -235,20 +233,20 @@ export function HomeView(): JSX.Element {
                 devices={devices.mics}
                 value={micId}
                 onChange={onPickMic}
-                disabled={controlsDisabled}
+                disabled={recording}
               />
               <Select
                 label="System Audio"
                 devices={devices.systems}
                 value={systemId}
                 onChange={onPickSystem}
-                disabled={controlsDisabled}
+                disabled={recording}
                 hint={systemHint}
               />
               <div className="flex items-center justify-between pt-1">
                 <button
                   onClick={refreshDevices}
-                  disabled={controlsDisabled}
+                  disabled={recording}
                   className="no-drag flex items-center gap-1.5 rounded-lg border border-border bg-card px-3 py-1.5 text-xs text-muted-foreground transition hover:bg-accent disabled:opacity-50"
                 >
                   <RefreshCw className="h-3.5 w-3.5" />
@@ -260,7 +258,7 @@ export function HomeView(): JSX.Element {
                     type="number"
                     min={1}
                     value={intervalSec}
-                    disabled={controlsDisabled}
+                    disabled={recording}
                     onChange={(e) => {
                       const v = Math.max(1, parseInt(e.target.value || '30', 10) || 30)
                       setIntervalSec(v)

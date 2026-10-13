@@ -16,7 +16,7 @@ function fmtBytes(n: number): string {
 const ACCEPTED_FORMATS = ['WAV', 'MP3', 'MP4', 'M4A', 'FLAC', 'OGG', 'MKV', 'WebM', 'WMA', 'AIFF']
 
 export function ImportView(): JSX.Element {
-  const { meetings, refresh } = useMeetings()
+  const { refresh } = useMeetings()
   const { navigate } = useRouter()
   const { job } = useTranscription()
 
@@ -34,12 +34,7 @@ export function ImportView(): JSX.Element {
 
   // Subscribe at mount (NOT gated on busy) so an early download event isn't dropped.
   // Transcription progress comes from the shared job (useTranscription).
-  useEffect(() => {
-    return window.meetvox.onModelDownloadProgress((p) => {
-      if (!mountedRef.current) return
-      setModel(p)
-    })
-  }, [])
+  useEffect(() => window.meetvox.onModelDownloadProgress(setModel), [])
 
   const runImport = useCallback(
     async (kind: 'file' | 'folder') => {
@@ -72,9 +67,6 @@ export function ImportView(): JSX.Element {
     [refresh, navigate]
   )
 
-  // One transcription at a time: while another meeting transcribes, importing waits.
-  const otherJob = job && !busy ? job : null
-
   return (
     <div className="custom-scrollbar flex h-full flex-col overflow-y-auto px-5 py-6">
       <div className="mx-auto w-full max-w-md space-y-6">
@@ -106,11 +98,11 @@ export function ImportView(): JSX.Element {
           </p>
         </div>
 
-        {/* Action buttons */}
+        {/* Action buttons: one transcription at a time, so importing waits while any job runs */}
         <div className="flex gap-3">
           <button
             onClick={() => runImport('file')}
-            disabled={busy || !!otherJob}
+            disabled={busy || !!job}
             className="no-drag flex flex-1 items-center justify-center gap-2 rounded-xl border border-border bg-card py-3 text-sm font-medium text-foreground transition hover:bg-accent disabled:opacity-40"
           >
             {busy ? (
@@ -122,7 +114,7 @@ export function ImportView(): JSX.Element {
           </button>
           <button
             onClick={() => runImport('folder')}
-            disabled={busy || !!otherJob}
+            disabled={busy || !!job}
             className="no-drag flex flex-1 items-center justify-center gap-2 rounded-xl border border-border bg-card py-3 text-sm font-medium text-foreground transition hover:bg-accent disabled:opacity-40"
           >
             {busy ? (
@@ -155,13 +147,8 @@ export function ImportView(): JSX.Element {
           </div>
         )}
 
-        {/* The running transcription with Stop: this import's, or another meeting's */}
-        {job && (
-          <JobProgress
-            job={job}
-            label={otherJob ? (meetings.find((m) => m.dir === job.meetingDir)?.name ?? 'Another meeting') : undefined}
-          />
-        )}
+        {/* The running transcription with Stop: this import's, or another meeting's (named) */}
+        {job && <JobProgress job={job} named={!busy} />}
 
         {/* Error */}
         {error && (

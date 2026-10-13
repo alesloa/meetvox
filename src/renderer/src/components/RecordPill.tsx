@@ -14,7 +14,7 @@ export function RecordPill({ recording, status, elapsed, onToggle }: RecordPillP
   return (
     <button
       onClick={onToggle}
-      className={`no-drag flex items-center gap-2 rounded-full px-6 py-3 text-sm font-semibold text-white shadow-lg transition active:scale-[0.98] disabled:opacity-50 ${
+      className={`no-drag flex items-center gap-2 rounded-full px-6 py-3 text-sm font-semibold text-white shadow-lg transition active:scale-[0.98] ${
         recording
           ? 'bg-rec-red hover:bg-rec-red-hover'
           : 'bg-rec-green hover:bg-rec-green-hover'

@@ -58,7 +58,6 @@ export function createJobSlot(emit: (e: TranscribeEvent) => void): JobSlot {
           }
         })
       } catch (e) {
-        running = null
         if (controller.signal.aborted) {
           emit(event(meetingDir, 'stopped', 'Transcription stopped.'))
           return 'stopped'

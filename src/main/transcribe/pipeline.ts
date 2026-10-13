@@ -46,7 +46,7 @@ function withEngine(message: string, label: string | undefined): string {
 /** Build runners: bundled ffmpeg for split/level, the chosen engine for words. */
 export function makeRunners(deps: {
   ffmpegPath: string
-  transcribe: (wav: string) => Promise<string>
+  transcribe: PipelineRunners['transcribe']
 }): PipelineRunners {
   return {
     split: (input, left, right) => splitStereoToMono(deps.ffmpegPath, input, left, right),

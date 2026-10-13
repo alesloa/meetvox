@@ -7,13 +7,15 @@ import { controlsState } from '../lib/transcribeControls'
 const BIG_BUTTON =
   'no-drag flex w-full items-center justify-center gap-2 rounded-xl border border-border bg-card py-3 text-sm font-medium text-foreground transition hover:bg-accent disabled:opacity-40'
 
-/** The running job's message, chunk counter and bar, with an optional Stop. */
-export function JobProgress({ job, label }: { job: TranscribeEvent; label?: string }): JSX.Element {
+/** The running job's message, chunk counter, bar and Stop. `named` prefixes another meeting's name. */
+export function JobProgress({ job, named }: { job: TranscribeEvent; named?: boolean }): JSX.Element {
+  const { meetings } = useMeetings()
   const { stop } = useTranscription()
+  const name = named ? (meetings.find((m) => m.dir === job.meetingDir)?.name ?? 'Another meeting') : null
   return (
     <div className="animate-fade-in rounded-lg border border-border bg-card p-3 text-xs text-muted-foreground">
       <div className="flex items-center justify-between gap-3">
-        <span className="min-w-0 truncate">{label ? `${label}: ${job.message}` : job.message}</span>
+        <span className="min-w-0 truncate">{name ? `${name}: ${job.message}` : job.message}</span>
         <div className="flex shrink-0 items-center gap-3">
           {job.chunkCount > 0 && (
             <span className="font-mono tabular-nums">
@@ -59,7 +61,6 @@ export function TranscribeControls({
   startLabel,
   blockedReason
 }: TranscribeControlsProps): JSX.Element {
-  const { meetings } = useMeetings()
   const { job, ended, start } = useTranscription()
   const state = controlsState({ job, meetingDir, progress, hasTranscript })
   const endedHere = ended?.meetingDir === meetingDir ? ended : null
@@ -116,13 +117,10 @@ export function TranscribeControls({
     }
   }
 
-  const nameOf = (dir: string): string =>
-    meetings.find((m) => m.dir === dir)?.name ?? 'Another meeting'
-
   return (
     <div className="space-y-2">
       {controls}
-      {state.kind === 'busy' && <JobProgress job={state.job} label={nameOf(state.job.meetingDir)} />}
+      {state.kind === 'busy' && <JobProgress job={state.job} named />}
       {blockedReason && state.kind !== 'busy' && (
         <p className="text-center text-xs text-muted-foreground">{blockedReason}</p>
       )}
