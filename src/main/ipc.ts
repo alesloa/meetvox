@@ -203,8 +203,10 @@ export function registerIpc(ctx: AppContext, getWindow: () => BrowserWindow | nu
     return untilStopped(engineFor(settings), job.signal)
   }
 
-  // One transcription at a time; Stop works from any page.
+  // One transcription at a time; Stop works from any page. Quitting stops it too, so
+  // whisper-cli never outlives the app; finished pieces stay saved for Continue.
   const jobs = createJobSlot((e) => send(Events.transcribeProgress, e))
+  app.on('before-quit', () => jobs.stop())
 
   /** Recorded or folder-imported meetings go chunk by chunk; a single-file import is one piece. */
   const transcribeMeeting = async (dir: string, mode: TranscribeMode, job: JobControl): Promise<void> => {

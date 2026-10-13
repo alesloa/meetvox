@@ -14,7 +14,9 @@ import { TranscriptList } from '../components/TranscriptList'
 import { AudioPlayer } from '../components/AudioPlayer'
 import { NotesEditor } from '../components/NotesEditor'
 import { SummaryPane } from '../components/SummaryPane'
+import { TranscribeControls } from '../components/TranscribeControls'
 import { useMeetings } from '../app/meetings'
+import { useTranscription } from '../app/transcription'
 import { useRouter } from '../app/router'
 import { fmtDate, fmtDuration } from '../lib/format'
 
@@ -33,6 +35,7 @@ const EXPORT_OPTIONS: { format: ExportFormat; label: string }[] = [
 export function MeetingView({ meetingDir }: MeetingViewProps): JSX.Element {
   const { refresh } = useMeetings()
   const { navigate } = useRouter()
+  const { ended } = useTranscription()
 
   const [meeting, setMeeting] = useState<Meeting | null>(null)
   const [entries, setEntries] = useState<TranscriptEntry[]>([])
@@ -114,6 +117,11 @@ export function MeetingView({ meetingDir }: MeetingViewProps): JSX.Element {
       setActionError(e instanceof Error ? e.message : String(e))
     }
   }, [meetingDir])
+
+  // When this meeting's transcription ends, show the new transcript or how far it got.
+  useEffect(() => {
+    if (ended?.meetingDir === meetingDir) void reloadMeeting()
+  }, [ended, meetingDir, reloadMeeting])
 
   const startEdit = useCallback(() => {
     if (!meeting) return
@@ -350,7 +358,30 @@ export function MeetingView({ meetingDir }: MeetingViewProps): JSX.Element {
           </div>
           <div className="flex min-h-0 flex-1 flex-col">
             {tab === 'transcript' ? (
-              <TranscriptList entries={entries} channelMapped={meeting.channelMapped} />
+              entries.length === 0 ? (
+                // No transcript yet: the controls sit right where the transcript will appear.
+                <div className="flex h-full flex-col items-center justify-center gap-3 px-6">
+                  <p className="text-sm text-muted-foreground">No transcript yet.</p>
+                  <div className="w-full max-w-sm">
+                    <TranscribeControls
+                      meetingDir={meetingDir}
+                      progress={meeting.progress}
+                      hasTranscript={meeting.hasTranscript}
+                    />
+                  </div>
+                </div>
+              ) : (
+                <>
+                  <div className="shrink-0 px-4 pt-3">
+                    <TranscribeControls
+                      meetingDir={meetingDir}
+                      progress={meeting.progress}
+                      hasTranscript={meeting.hasTranscript}
+                    />
+                  </div>
+                  <TranscriptList entries={entries} channelMapped={meeting.channelMapped} />
+                </>
+              )
             ) : tab === 'audio' ? (
               <AudioPlayer meetingDir={meetingDir} />
             ) : (

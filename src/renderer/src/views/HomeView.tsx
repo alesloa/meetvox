@@ -1,32 +1,18 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import {
-  Mic,
-  Volume2,
-  RefreshCw,
-  FileText,
-  FolderOpen,
-  Loader2,
-  AudioLines,
-  MonitorPlay
-} from 'lucide-react'
+import { Mic, Volume2, RefreshCw, FolderOpen, AudioLines, MonitorPlay } from 'lucide-react'
 import { Card } from '../components/Card'
 import { Select } from '../components/Select'
 import { VuMeter } from '../components/VuMeter'
 import { GainSlider } from '../components/GainSlider'
 import { RecordPill } from '../components/RecordPill'
+import { TranscribeControls } from '../components/TranscribeControls'
 import { useMeetings } from '../app/meetings'
 import { useSettings } from '../app/settings'
 import { resolveDeviceSelection } from '../lib/deviceSelection'
 import { DEFAULT_INTERVAL_SEC, GAIN_DEFAULT } from '@shared/constants'
 import { findLocalModel } from '@shared/transcription'
 import { ipcErrorText } from '../lib/ipcError'
-import type {
-  DeviceList,
-  Levels,
-  RecorderStatus,
-  TranscribeProgress,
-  ModelDownloadProgress
-} from '@shared/types'
+import type { DeviceList, Levels, RecorderStatus, ModelDownloadProgress } from '@shared/types'
 
 const EMPTY_DEVICES: DeviceList = { mics: [], systems: [], autoMicId: null, autoSystemId: null }
 
@@ -36,7 +22,7 @@ function fmtBytes(n: number): string {
 }
 
 export function HomeView(): JSX.Element {
-  const { refresh: refreshMeetings } = useMeetings()
+  const { meetings } = useMeetings()
   const { settings, save: saveSettings, loading: settingsLoading } = useSettings()
   const seededRef = useRef(false)
   const [platform, setPlatform] = useState<'mac' | 'win'>('mac')
@@ -53,31 +39,27 @@ export function HomeView(): JSX.Element {
     sessionDir: null
   })
   const [elapsed, setElapsed] = useState(0)
-  const [transcribe, setTranscribe] = useState<TranscribeProgress | null>(null)
   const [model, setModel] = useState<ModelDownloadProgress | null>(null)
-  const [hasRecording, setHasRecording] = useState(false)
+  // The meeting "Transcribe Last Recording" targets: the newest recording, updated
+  // when a recording stops (so a transcription can run while the next one records).
+  const [lastDir, setLastDir] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
 
   const startMsRef = useRef<number | null>(null)
   const recording = status.phase === 'recording'
-  const transcribing =
-    transcribe !== null && ['needs-model', 'downloading-model', 'running'].includes(transcribe.phase)
+  const lastMeeting = meetings.find((m) => m.dir === lastDir)
 
   // --- bootstrap + event subscriptions ---
   useEffect(() => {
     window.meetvox.getPlatform().then(setPlatform)
-    window.meetvox.lastRecording().then((dir) => setHasRecording(dir !== null))
+    window.meetvox.lastRecording().then(setLastDir)
     refreshDevices()
 
     const offLevels = window.meetvox.onLevels(setLevels)
     const offStatus = window.meetvox.onRecorderStatus((s) => {
       setStatus(s)
-      if (s.phase === 'idle' && s.sessionDir) setHasRecording(true)
+      if (s.phase === 'idle' && s.sessionDir) setLastDir(s.sessionDir)
       if (s.phase === 'error') setError(s.message)
-    })
-    const offTranscribe = window.meetvox.onTranscribeProgress((p) => {
-      setTranscribe(p)
-      if (p.phase === 'done') setModel(null)
     })
     const offModel = window.meetvox.onModelDownloadProgress((p) => {
       setModel(p)
@@ -86,7 +68,6 @@ export function HomeView(): JSX.Element {
     return () => {
       offLevels()
       offStatus()
-      offTranscribe()
       offModel()
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -185,7 +166,7 @@ export function HomeView(): JSX.Element {
     setError(null)
     if (recording) {
       const res = await window.meetvox.stopRecording()
-      setHasRecording(res.chunkCount > 0)
+      if (res.chunkCount > 0) setLastDir(res.sessionDir)
       startMsRef.current = null
       return
     }
@@ -216,20 +197,6 @@ export function HomeView(): JSX.Element {
     return off
   }, [recording, onToggleRecord])
 
-  const onTranscribe = useCallback(async () => {
-    setError(null)
-    setTranscribe({ phase: 'running', message: 'Starting…', chunkIndex: 0, chunkCount: 0 })
-    try {
-      await window.meetvox.transcribe(undefined, 'fresh')
-      // Surface the freshly transcribed meeting in the sidebar/library without a reload.
-      await refreshMeetings()
-    } catch (e) {
-      const message = ipcErrorText(e)
-      setTranscribe({ phase: 'error', message, chunkIndex: 0, chunkCount: 0 })
-      setError(message)
-    }
-  }, [refreshMeetings])
-
   const onScreenRecord = useCallback(async () => {
     setError(null)
     try {
@@ -239,14 +206,15 @@ export function HomeView(): JSX.Element {
     }
   }, [])
 
-  const controlsDisabled = recording || transcribing
+  // Only recording locks the device pickers; a transcription never blocks recording.
+  const controlsDisabled = recording
   const systemHint =
     platform === 'mac'
       ? 'Two ways to capture system audio: "System Audio (built-in)" taps the output directly (no setup; macOS may ask for audio-recording permission once), or "BlackHole 2ch" if you route output through a Multi-Output Device that includes BlackHole.'
       : 'Pick "CABLE Output (VB-Audio)" or a VoiceMeeter input if you have one — route Windows output through it (most reliable). Otherwise a render endpoint is captured via WASAPI loopback, where supported.'
 
   // Welcome empty-state: no recordings and idle
-  const showWelcome = !hasRecording && !recording
+  const showWelcome = lastDir === null && !recording
 
   return (
     <div className="flex h-full flex-col">
@@ -343,19 +311,20 @@ export function HomeView(): JSX.Element {
             </p>
           </div>
 
-          {/* Transcribe */}
-          <button
-            onClick={onTranscribe}
-            disabled={recording || transcribing || !hasRecording}
-            className="no-drag flex w-full items-center justify-center gap-2 rounded-xl border border-border bg-card py-3 text-sm font-medium text-foreground transition hover:bg-accent disabled:opacity-40"
-          >
-            {transcribing ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
-            ) : (
-              <FileText className="h-4 w-4" />
-            )}
-            {transcribing ? 'Transcribing…' : 'Transcribe Last Recording'}
-          </button>
+          {/* Transcribe the last recording: Stop, Continue / Start over, or another meeting's job */}
+          {lastDir && (
+            <TranscribeControls
+              meetingDir={lastDir}
+              progress={lastMeeting?.progress ?? null}
+              hasTranscript={lastMeeting?.hasTranscript ?? false}
+              startLabel="Transcribe Last Recording"
+              blockedReason={
+                recording && status.sessionDir === lastDir
+                  ? 'Stop the recording to transcribe it.'
+                  : null
+              }
+            />
+          )}
 
           {/* Model download progress */}
           {model && !model.done && !model.error && (
@@ -378,28 +347,6 @@ export function HomeView(): JSX.Element {
             </div>
           )}
 
-          {/* Transcribe progress */}
-          {transcribe && transcribe.phase === 'running' && transcribe.chunkCount > 0 && (
-            <div className="animate-fade-in rounded-lg border border-border bg-card p-3 text-xs text-muted-foreground">
-              <div className="mb-1.5 flex items-center justify-between">
-                <span>{transcribe.message}</span>
-                <span className="font-mono tabular-nums">
-                  {transcribe.chunkIndex}/{transcribe.chunkCount}
-                </span>
-              </div>
-              <div className="h-1.5 w-full overflow-hidden rounded-full bg-black/60">
-                <div
-                  className="h-full rounded-full bg-muted transition-[width] duration-200"
-                  style={{ width: `${(transcribe.chunkIndex / transcribe.chunkCount) * 100}%` }}
-                />
-              </div>
-            </div>
-          )}
-
-          {transcribe && transcribe.phase === 'done' && (
-            <p className="animate-fade-in text-center text-sm text-rec-green">{transcribe.message}</p>
-          )}
-
           {/* Open folder */}
           <button
             onClick={() => window.meetvox.openMeetingFolder()}
@@ -419,7 +366,6 @@ export function HomeView(): JSX.Element {
         <div className="flex items-stretch gap-3">
           <RecordPill
             recording={recording}
-            transcribing={transcribing}
             status={status}
             elapsed={elapsed}
             onToggle={onToggleRecord}

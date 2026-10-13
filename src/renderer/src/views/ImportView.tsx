@@ -2,9 +2,11 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { FileAudio, FolderOpen, Loader2 } from 'lucide-react'
 import { useMeetings } from '../app/meetings'
 import { useRouter } from '../app/router'
+import { useTranscription } from '../app/transcription'
+import { JobProgress } from '../components/TranscribeControls'
 import { findLocalModel } from '@shared/transcription'
 import { ipcErrorText } from '../lib/ipcError'
-import type { ModelDownloadProgress, TranscribeProgress } from '@shared/types'
+import type { ModelDownloadProgress } from '@shared/types'
 
 function fmtBytes(n: number): string {
   if (n <= 0) return '0 MB'
@@ -14,12 +16,12 @@ function fmtBytes(n: number): string {
 const ACCEPTED_FORMATS = ['WAV', 'MP3', 'MP4', 'M4A', 'FLAC', 'OGG', 'MKV', 'WebM', 'WMA', 'AIFF']
 
 export function ImportView(): JSX.Element {
-  const { refresh } = useMeetings()
+  const { meetings, refresh } = useMeetings()
   const { navigate } = useRouter()
+  const { job } = useTranscription()
 
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [transcribe, setTranscribe] = useState<TranscribeProgress | null>(null)
   const [model, setModel] = useState<ModelDownloadProgress | null>(null)
 
   const mountedRef = useRef(true)
@@ -30,31 +32,19 @@ export function ImportView(): JSX.Element {
     }
   }, [])
 
-  // Subscribe to progress events at mount (NOT gated on busy) so an early
-  // needs-model/running event emitted before the next render isn't dropped.
-  // Progress state is only rendered while busy, so off-import updates are inert.
+  // Subscribe at mount (NOT gated on busy) so an early download event isn't dropped.
+  // Transcription progress comes from the shared job (useTranscription).
   useEffect(() => {
-    const offTranscribe = window.meetvox.onTranscribeProgress((p) => {
-      if (!mountedRef.current) return
-      setTranscribe(p)
-      if (p.phase === 'done') setModel(null)
-    })
-    const offModel = window.meetvox.onModelDownloadProgress((p) => {
+    return window.meetvox.onModelDownloadProgress((p) => {
       if (!mountedRef.current) return
       setModel(p)
     })
-
-    return () => {
-      offTranscribe()
-      offModel()
-    }
   }, [])
 
   const runImport = useCallback(
     async (kind: 'file' | 'folder') => {
       setBusy(true)
       setError(null)
-      setTranscribe(null)
       setModel(null)
 
       try {
@@ -68,7 +58,8 @@ export function ImportView(): JSX.Element {
           return
         }
 
-        // Success: refresh list then navigate to the new meeting.
+        // Done or stopped: refresh the list, then open the new meeting (a stopped
+        // import continues from there).
         await refresh()
         if (!mountedRef.current) return
         navigate({ type: 'openMeeting', dir: meetingDir })
@@ -81,13 +72,8 @@ export function ImportView(): JSX.Element {
     [refresh, navigate]
   )
 
-  const progressMessage = (() => {
-    if (model && !model.done && !model.error) return null // model bar rendered separately below
-    if (!transcribe) return null
-    // While the chunk bar is up it already shows the message — don't print it twice.
-    if (transcribe.phase === 'running' && transcribe.chunkCount > 0) return null
-    return transcribe.message
-  })()
+  // One transcription at a time: while another meeting transcribes, importing waits.
+  const otherJob = job && !busy ? job : null
 
   return (
     <div className="custom-scrollbar flex h-full flex-col overflow-y-auto px-5 py-6">
@@ -124,7 +110,7 @@ export function ImportView(): JSX.Element {
         <div className="flex gap-3">
           <button
             onClick={() => runImport('file')}
-            disabled={busy}
+            disabled={busy || !!otherJob}
             className="no-drag flex flex-1 items-center justify-center gap-2 rounded-xl border border-border bg-card py-3 text-sm font-medium text-foreground transition hover:bg-accent disabled:opacity-40"
           >
             {busy ? (
@@ -136,7 +122,7 @@ export function ImportView(): JSX.Element {
           </button>
           <button
             onClick={() => runImport('folder')}
-            disabled={busy}
+            disabled={busy || !!otherJob}
             className="no-drag flex flex-1 items-center justify-center gap-2 rounded-xl border border-border bg-card py-3 text-sm font-medium text-foreground transition hover:bg-accent disabled:opacity-40"
           >
             {busy ? (
@@ -169,29 +155,12 @@ export function ImportView(): JSX.Element {
           </div>
         )}
 
-        {/* Transcribe chunk progress */}
-        {transcribe && transcribe.phase === 'running' && transcribe.chunkCount > 0 && (
-          <div className="animate-fade-in rounded-lg border border-border bg-card p-3 text-xs text-muted-foreground">
-            <div className="mb-1.5 flex items-center justify-between">
-              <span>{transcribe.message}</span>
-              <span className="font-mono tabular-nums">
-                {transcribe.chunkIndex}/{transcribe.chunkCount}
-              </span>
-            </div>
-            <div className="h-1.5 w-full overflow-hidden rounded-full bg-black/60">
-              <div
-                className="h-full rounded-full bg-muted transition-[width] duration-200"
-                style={{ width: `${(transcribe.chunkIndex / transcribe.chunkCount) * 100}%` }}
-              />
-            </div>
-          </div>
-        )}
-
-        {/* General progress message (needs-model / single-chunk running) */}
-        {progressMessage && (
-          <p className="animate-fade-in text-center text-xs text-muted-foreground">
-            {progressMessage}
-          </p>
+        {/* The running transcription with Stop: this import's, or another meeting's */}
+        {job && (
+          <JobProgress
+            job={job}
+            label={otherJob ? (meetings.find((m) => m.dir === job.meetingDir)?.name ?? 'Another meeting') : undefined}
+          />
         )}
 
         {/* Error */}

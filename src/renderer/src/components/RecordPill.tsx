@@ -4,23 +4,16 @@ import type { RecorderStatus } from '@shared/types'
 
 interface RecordPillProps {
   recording: boolean
-  transcribing: boolean
   status: RecorderStatus
   elapsed: number
   onToggle: () => void
 }
 
-export function RecordPill({
-  recording,
-  transcribing,
-  status,
-  elapsed,
-  onToggle
-}: RecordPillProps): JSX.Element {
+// Never disabled: a meeting can't be re-recorded, so a running transcription must not block it.
+export function RecordPill({ recording, status, elapsed, onToggle }: RecordPillProps): JSX.Element {
   return (
     <button
       onClick={onToggle}
-      disabled={transcribing}
       className={`no-drag flex items-center gap-2 rounded-full px-6 py-3 text-sm font-semibold text-white shadow-lg transition active:scale-[0.98] disabled:opacity-50 ${
         recording
           ? 'bg-rec-red hover:bg-rec-red-hover'
