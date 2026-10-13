@@ -38,6 +38,11 @@ mac:
       filter: ['tray-Template*.png']
   target:
     - dmg
+  # Never sign by auto-discovery. With no Developer ID in the keychain, electron-builder
+  # falls back to any other certificate, such as an "Apple Development: <name>" one: that
+  # puts the person's name in the app and gives Gatekeeper nothing it accepts. For a
+  # Developer ID release, remove this line and set CSC_NAME.
+  identity: null
   hardenedRuntime: true
   gatekeeperAssess: false
   entitlements: build/entitlements.mac.plist
