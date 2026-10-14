@@ -109,6 +109,8 @@ export interface WavMeta {
   sampleRate: number
   frames: number
   durationSec: number
+  /** Byte offset of the first sample (after the `data` chunk header). */
+  dataOffset: number
 }
 
 /** Minimal WAV reader: pull channels/rate/frame-count → duration (pipeline needs chunk_duration). */
@@ -121,6 +123,7 @@ export function readWavDuration(buf: Buffer): WavMeta {
   let sampleRate = 0
   let bitsPerSample = 16
   let dataLen = 0
+  let dataOffset = 0
   let offset = 12
   while (offset + 8 <= buf.length) {
     const id = buf.toString('ascii', offset, offset + 4)
@@ -131,6 +134,7 @@ export function readWavDuration(buf: Buffer): WavMeta {
       bitsPerSample = buf.readUInt16LE(offset + 22)
     } else if (id === 'data') {
       dataLen = size
+      dataOffset = offset + 8
     }
     offset += 8 + size + (size % 2) // chunks are word-aligned
   }
@@ -140,6 +144,7 @@ export function readWavDuration(buf: Buffer): WavMeta {
     channels,
     sampleRate,
     frames,
-    durationSec: sampleRate > 0 ? frames / sampleRate : 0
+    durationSec: sampleRate > 0 ? frames / sampleRate : 0,
+    dataOffset
   }
 }

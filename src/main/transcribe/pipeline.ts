@@ -9,6 +9,7 @@ import { join, basename } from 'path'
 import { tmpdir } from 'os'
 import { readWavDuration } from '../audio/wav'
 import { splitStereoToMono } from './splitChannels'
+import { muteEchoInFile } from './echo'
 import { getAudioLevel, isSilent } from './silence'
 import { clearProgress, listChunks, readProgress, savePiece } from './progress'
 import {
@@ -49,7 +50,11 @@ export function makeRunners(deps: {
   transcribe: PipelineRunners['transcribe']
 }): PipelineRunners {
   return {
-    split: (input, left, right) => splitStereoToMono(deps.ffmpegPath, input, left, right),
+    split: async (input, left, right) => {
+      await splitStereoToMono(deps.ffmpegPath, input, left, right)
+      // The mic hears the speakers without headphones; keep only what was said in the room.
+      muteEchoInFile(left, right)
+    },
     level: (wav) => getAudioLevel(deps.ffmpegPath, wav),
     transcribe: deps.transcribe
   }

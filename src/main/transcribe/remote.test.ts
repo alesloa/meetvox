@@ -82,7 +82,8 @@ describe('silentWav + splitWav', () => {
       channels: 1,
       sampleRate: WHISPER_INPUT_RATE,
       frames: WHISPER_INPUT_RATE,
-      durationSec: 1
+      durationSec: 1,
+      dataOffset: 44
     })
   })
 
