@@ -32,6 +32,16 @@ export function MeetingsProvider({ children }: { children: React.ReactNode }): J
     void refresh()
   }, [refresh])
 
+  // A stopped recording is a new meeting: list it right away, from any page or the tray.
+  // Main sends idle only after the final chunk is on disk.
+  useEffect(
+    () =>
+      window.meetvox.onRecorderStatus((s) => {
+        if (s.phase === 'idle' && s.sessionDir) void refresh()
+      }),
+    [refresh]
+  )
+
   return (
     <MeetingsContext.Provider value={{ meetings, loading, error, refresh }}>
       {children}
