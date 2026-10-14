@@ -1,11 +1,15 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 import { Mic, List, Upload, Settings, ChevronLeft, ChevronRight, ChevronDown, Trash2 } from 'lucide-react'
+import type { Meeting } from '@shared/types'
 import { useRouter } from '../app/router'
 import type { NavAction, Route } from '../app/router'
 import { useMeetings } from '../app/meetings'
 import { useSettings } from '../app/settings'
+import { useTranscription } from '../app/transcription'
 import { fmtMeetingTime, groupByRecency } from '../lib/format'
+import { controlsState } from '../lib/transcribeControls'
+import { RenameInput } from './RenameInput'
 
 interface NavItem {
   label: string
@@ -32,6 +36,10 @@ export function Sidebar(): JSX.Element {
   const { route, navigate } = useRouter()
   const { meetings, refresh } = useMeetings()
   const { settings, save } = useSettings()
+  const { job, start, stop } = useTranscription()
+  // The meeting whose right-click menu is open (stays highlighted) / whose name is being edited.
+  const [menuDir, setMenuDir] = useState<string | null>(null)
+  const [renaming, setRenaming] = useState<string | null>(null)
 
   // Bucket meetings into Today / Yesterday / Previous 7 Days / … by createdAt.
   // Recomputed only when the list changes; day-granular `now` is fine to re-read.
@@ -55,8 +63,7 @@ export function Sidebar(): JSX.Element {
   }
 
   const handleDelete = useCallback(
-    async (e: React.MouseEvent, dir: string, name: string) => {
-      e.stopPropagation()
+    async ({ dir, name }: Meeting) => {
       const confirmed = window.confirm(
         `Delete "${name}"?\n\nThis permanently removes the recording, audio, and transcript. This cannot be undone.`
       )
@@ -71,6 +78,61 @@ export function Sidebar(): JSX.Element {
     },
     [route, navigate, refresh]
   )
+
+  const handleRename = async (dir: string, next: string | null): Promise<void> => {
+    setRenaming(null)
+    if (!next) return
+    try {
+      await window.meetvox.renameMeeting(dir, next)
+      await refresh()
+    } catch (err) {
+      console.error('Rename failed:', err)
+    }
+  }
+
+  const openMenu = async (m: Meeting): Promise<void> => {
+    setMenuDir(m.dir)
+    const action = await window.meetvox.showMeetingMenu({
+      dir: m.dir,
+      hasTranscript: m.hasTranscript,
+      transcription: controlsState({
+        job,
+        meetingDir: m.dir,
+        progress: m.progress,
+        hasTranscript: m.hasTranscript
+      }).kind
+    })
+    setMenuDir(null)
+    if (!action) return
+    switch (action.kind) {
+      case 'open':
+        navigate({ type: 'openMeeting', dir: m.dir })
+        break
+      case 'rename':
+        setRenaming(m.dir)
+        break
+      case 'transcribe':
+        // The meeting page shows the progress and how the run ended.
+        navigate({ type: 'openMeeting', dir: m.dir })
+        void start(m.dir, action.mode)
+        break
+      case 'stop':
+        stop()
+        break
+      case 'export':
+        window.meetvox
+          .exportTranscript(m.dir, action.format)
+          .catch((err) => console.error('Export failed:', err))
+        break
+      case 'delete':
+        void handleDelete(m)
+        break
+      default: {
+        const _exhaustive: never = action
+        throw new Error(`Unknown menu action: ${JSON.stringify(_exhaustive)}`)
+      }
+    }
+  }
 
   const width = expanded ? '256px' : '64px'
 
@@ -149,13 +211,30 @@ export function Sidebar(): JSX.Element {
                     <div className="ml-5 flex flex-col border-l border-border/60 pl-1.5">
                       {g.items.map((m) => {
                         const active = route.view === 'meeting' && route.meetingDir === m.dir
+                        if (renaming === m.dir) {
+                          return (
+                            <RenameInput
+                              key={m.dir}
+                              name={m.name}
+                              onDone={(next) => void handleRename(m.dir, next)}
+                              className="no-drag my-0.5 min-w-0 rounded-md border border-border bg-input px-2 py-1 text-sm font-medium text-foreground outline-none focus:border-ring"
+                            />
+                          )
+                        }
                         return (
-                          <div key={m.dir} className="group relative flex items-center">
+                          <div
+                            key={m.dir}
+                            className="group relative flex items-center"
+                            onContextMenu={(e) => {
+                              e.preventDefault()
+                              void openMenu(m)
+                            }}
+                          >
                             <button
                               title={m.name}
                               onClick={() => navigate({ type: 'openMeeting', dir: m.dir })}
                               className={`no-drag flex min-w-0 flex-1 flex-col items-start gap-0.5 rounded-lg px-2 py-1.5 pr-7 text-left transition-colors ${
-                                active
+                                active || menuDir === m.dir
                                   ? 'bg-accent text-accent-foreground'
                                   : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground'
                               }`}
@@ -167,7 +246,7 @@ export function Sidebar(): JSX.Element {
                             </button>
                             <button
                               title="Delete meeting"
-                              onClick={(e) => handleDelete(e, m.dir, m.name)}
+                              onClick={() => void handleDelete(m)}
                               className="no-drag absolute right-1 rounded p-0.5 text-transparent transition-colors group-hover:text-red-500 hover:bg-red-500/10 hover:!text-red-500"
                             >
                               <Trash2 className="h-3.5 w-3.5" />

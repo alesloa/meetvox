@@ -6,11 +6,14 @@ import { Commands, Events, type TrayAction, type TrayView } from '@shared/ipc'
 import type {
   DeviceList,
   EngineTestResult,
+  ExportFormat,
   Gains,
   Levels,
   LocalModelStatus,
   Meeting,
   MeetingAudio,
+  MeetingMenuAction,
+  MeetingMenuInput,
   ModelDownloadProgress,
   ProviderConfig,
   RecorderStatus,
@@ -77,7 +80,9 @@ const api = {
   renameMeeting: (dir: string, name: string): Promise<void> =>
     ipcRenderer.invoke(Commands.renameMeeting, { dir, name }),
   deleteMeeting: (dir: string): Promise<void> => ipcRenderer.invoke(Commands.deleteMeeting, { dir }),
-  exportTranscript: (dir: string, format: 'md' | 'txt' | 'srt'): Promise<{ path: string }> =>
+  showMeetingMenu: (input: MeetingMenuInput): Promise<MeetingMenuAction | null> =>
+    ipcRenderer.invoke(Commands.showMeetingMenu, input),
+  exportTranscript: (dir: string, format: ExportFormat): Promise<{ path: string }> =>
     ipcRenderer.invoke(Commands.exportTranscript, { dir, format }),
   getMeetingAudio: (dir: string): Promise<MeetingAudio> =>
     ipcRenderer.invoke(Commands.getMeetingAudio, { dir }),

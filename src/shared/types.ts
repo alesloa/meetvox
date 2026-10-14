@@ -129,6 +129,24 @@ export interface Meeting extends MeetingMeta {
   progress: { done: number; total: number } | null
 }
 
+export type ExportFormat = 'md' | 'txt' | 'srt'
+
+/** What a meeting's right-click menu needs. `transcription` is the renderer's controlsState kind. */
+export interface MeetingMenuInput {
+  dir: string
+  hasTranscript: boolean
+  transcription: 'running' | 'busy' | 'stopped' | 'idle'
+}
+
+/** The item picked in a meeting's right-click menu. Show in Finder runs in main and picks nothing. */
+export type MeetingMenuAction =
+  | { kind: 'open' }
+  | { kind: 'rename' }
+  | { kind: 'transcribe'; mode: TranscribeMode }
+  | { kind: 'stop' }
+  | { kind: 'export'; format: ExportFormat }
+  | { kind: 'delete' }
+
 /** Playable audio sources for a meeting: meetvox-audio:// URLs + per-source/total durations. */
 export interface MeetingAudio {
   sources: string[]

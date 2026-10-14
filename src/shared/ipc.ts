@@ -4,11 +4,14 @@
 import type {
   DeviceList,
   EngineTestResult,
+  ExportFormat,
   Gains,
   Levels,
   LocalModelStatus,
   Meeting,
   MeetingAudio,
+  MeetingMenuAction,
+  MeetingMenuInput,
   ModelDownloadProgress,
   ProviderConfig,
   RecorderStatus,
@@ -51,6 +54,7 @@ export const Commands = {
   getMeeting: 'cmd:getMeeting',
   renameMeeting: 'cmd:renameMeeting',
   deleteMeeting: 'cmd:deleteMeeting',
+  showMeetingMenu: 'cmd:showMeetingMenu',
   exportTranscript: 'cmd:exportTranscript',
   getMeetingAudio: 'cmd:getMeetingAudio',
   getSettings: 'cmd:getSettings',
@@ -127,7 +131,9 @@ export interface CommandMap {
   [Commands.getMeeting]: { args: { dir: string }; result: { meeting: Meeting; entries: TranscriptEntry[] } }
   [Commands.renameMeeting]: { args: { dir: string; name: string }; result: void }
   [Commands.deleteMeeting]: { args: { dir: string }; result: void }
-  [Commands.exportTranscript]: { args: { dir: string; format: 'md' | 'txt' | 'srt' }; result: { path: string } }
+  // Native right-click menu at the cursor; null = closed without a pick.
+  [Commands.showMeetingMenu]: { args: MeetingMenuInput; result: MeetingMenuAction | null }
+  [Commands.exportTranscript]: { args: { dir: string; format: ExportFormat }; result: { path: string } }
   [Commands.getMeetingAudio]: { args: { dir: string }; result: MeetingAudio }
   // Returns NO raw secrets — only a per-provider "is set" boolean map.
   [Commands.getSettings]: { args: void; result: { settings: Settings; secretsSet: Record<string, boolean> } }

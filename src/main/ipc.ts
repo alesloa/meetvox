@@ -18,7 +18,9 @@ import type {
   EngineTestResult,
   LocalModelStatus,
   Settings,
-  TranscriptionSettings
+  TranscriptionSettings,
+  ExportFormat,
+  MeetingMenuInput
 } from '@shared/types'
 import { LOCAL_MODELS, findLocalModel, type LocalModel } from '@shared/transcription'
 import type { AppContext } from './context'
@@ -33,6 +35,7 @@ import {
 } from './settings'
 import { enumerateDevices } from './audio/enumerate'
 import { listMeetings, getMeeting, renameMeeting, deleteMeeting } from './library'
+import { popupMeetingMenu } from './meetingMenu'
 import { getMeetingAudio } from './protocol'
 import { toMarkdown, toPlainText, toSrt } from './export'
 import { createSystemSource, type SystemSource } from './audio/systemSource'
@@ -406,9 +409,13 @@ export function registerIpc(ctx: AppContext, getWindow: () => BrowserWindow | nu
     deleteMeeting(dir, ctx.recordingsRoot)
   )
 
+  ipcMain.handle(Commands.showMeetingMenu, (_e, input: MeetingMenuInput) =>
+    popupMeetingMenu(getWindow(), input)
+  )
+
   ipcMain.handle(
     Commands.exportTranscript,
-    async (_e, { dir, format }: { dir: string; format: 'md' | 'txt' | 'srt' }) => {
+    async (_e, { dir, format }: { dir: string; format: ExportFormat }) => {
       const { meeting, entries } = await getMeeting(dir)
 
       let content: string

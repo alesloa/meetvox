@@ -9,12 +9,13 @@ import {
   Loader2,
   NotebookPen
 } from 'lucide-react'
-import type { Meeting, TranscriptEntry } from '@shared/types'
+import type { ExportFormat, Meeting, TranscriptEntry } from '@shared/types'
 import { TranscriptList } from '../components/TranscriptList'
 import { AudioPlayer } from '../components/AudioPlayer'
 import { NotesEditor } from '../components/NotesEditor'
 import { SummaryPane } from '../components/SummaryPane'
 import { TranscribeControls } from '../components/TranscribeControls'
+import { RenameInput } from '../components/RenameInput'
 import { useMeetings } from '../app/meetings'
 import { useTranscription } from '../app/transcription'
 import { useRouter } from '../app/router'
@@ -24,8 +25,6 @@ interface MeetingViewProps {
   meetingDir: string
 }
 
-type ExportFormat = 'md' | 'txt' | 'srt'
-
 const EXPORT_OPTIONS: { format: ExportFormat; label: string }[] = [
   { format: 'md', label: 'Markdown' },
   { format: 'txt', label: 'Plain text' },
@@ -33,7 +32,7 @@ const EXPORT_OPTIONS: { format: ExportFormat; label: string }[] = [
 ]
 
 export function MeetingView({ meetingDir }: MeetingViewProps): JSX.Element {
-  const { refresh } = useMeetings()
+  const { meetings, refresh } = useMeetings()
   const { navigate } = useRouter()
   const { ended } = useTranscription()
 
@@ -47,15 +46,11 @@ export function MeetingView({ meetingDir }: MeetingViewProps): JSX.Element {
 
   // Header interaction state — all reset when meetingDir changes (see effect deps).
   const [editing, setEditing] = useState(false)
-  const [draftName, setDraftName] = useState('')
   const [exportOpen, setExportOpen] = useState(false)
   const [savedPath, setSavedPath] = useState<string | null>(null)
   const [confirmDelete, setConfirmDelete] = useState(false)
   const [actionError, setActionError] = useState<string | null>(null)
 
-  // Blur is the single rename-commit trigger; Escape sets this so the resulting
-  // blur cancels instead of committing (avoids an Enter+blur double rename).
-  const cancelNextBlur = useRef(false)
   const exportRef = useRef<HTMLDivElement>(null)
 
   // --- load the meeting whenever the dir changes ---
@@ -124,37 +119,25 @@ export function MeetingView({ meetingDir }: MeetingViewProps): JSX.Element {
   }, [ended, meetingDir, reloadMeeting])
 
   const startEdit = useCallback(() => {
-    if (!meeting) return
-    setDraftName(meeting.name)
     setActionError(null)
     setEditing(true)
-  }, [meeting])
+  }, [])
 
-  const commitRename = useCallback(async () => {
-    if (!meeting) return
-    const next = draftName.trim()
-    setEditing(false)
-    if (!next || next === meeting.name) return
-    try {
-      await window.meetvox.renameMeeting(meetingDir, next)
-      await reloadMeeting()
-      await refresh()
-    } catch (e) {
-      // Backend rejects empty/invalid names — keep the old name, surface softly.
-      setActionError(e instanceof Error ? e.message : String(e))
-    }
-  }, [meeting, draftName, meetingDir, reloadMeeting, refresh])
-
-  // Single commit path. Enter and click-away both blur the input; Escape blurs
-  // too but flags this handler to cancel instead of commit.
-  const handleRenameBlur = useCallback(() => {
-    if (cancelNextBlur.current) {
-      cancelNextBlur.current = false
+  const onRenamed = useCallback(
+    async (next: string | null) => {
       setEditing(false)
-      return
-    }
-    void commitRename()
-  }, [commitRename])
+      if (!next) return
+      try {
+        await window.meetvox.renameMeeting(meetingDir, next)
+        await reloadMeeting()
+        await refresh()
+      } catch (e) {
+        // The rename failed: the old name stays, surface the error softly.
+        setActionError(e instanceof Error ? e.message : String(e))
+      }
+    },
+    [meetingDir, reloadMeeting, refresh]
+  )
 
   const onExport = useCallback(
     async (format: ExportFormat) => {
@@ -200,6 +183,9 @@ export function MeetingView({ meetingDir }: MeetingViewProps): JSX.Element {
     )
   }
 
+  // The sidebar can rename this meeting too; its list has the newest name.
+  const name = meetings.find((m) => m.dir === meetingDir)?.name ?? meeting.name
+
   const transcribeControls = (
     <TranscribeControls
       meetingDir={meetingDir}
@@ -216,26 +202,14 @@ export function MeetingView({ meetingDir }: MeetingViewProps): JSX.Element {
           {/* Title (inline-editable) */}
           <div className="flex min-w-0 flex-1 items-center gap-2">
             {editing ? (
-              <input
-                autoFocus
-                value={draftName}
-                onChange={(e) => setDraftName(e.target.value)}
-                onBlur={handleRenameBlur}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') {
-                    e.preventDefault()
-                    e.currentTarget.blur()
-                  } else if (e.key === 'Escape') {
-                    e.preventDefault()
-                    cancelNextBlur.current = true
-                    e.currentTarget.blur()
-                  }
-                }}
+              <RenameInput
+                name={name}
+                onDone={(next) => void onRenamed(next)}
                 className="min-w-0 flex-1 rounded-md border border-border bg-input px-2 py-1 text-lg font-semibold text-foreground outline-none focus:border-ring"
               />
             ) : (
               <>
-                <h1 className="truncate text-lg font-semibold text-foreground">{meeting.name}</h1>
+                <h1 className="truncate text-lg font-semibold text-foreground">{name}</h1>
                 <button
                   title="Rename"
                   onClick={startEdit}
