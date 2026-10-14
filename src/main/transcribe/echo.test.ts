@@ -56,6 +56,14 @@ describe('muteEcho', () => {
     expect(rms(out) / rms(mic)).toBeLessThan(0.05)
   })
 
+  it('mutes the echo when the system side was recorded later than the mic', () => {
+    // The two sides are captured separately; a real recording had the system side 200 ms late.
+    const talk = voice(8, 10, 0.6)
+    const mic = pcm(echoOf(talk, 0, 0.05))
+    const out = muteEcho(mic, pcm(echoOf(talk, 200, 1)), RATE)
+    expect(rms(out) / rms(mic)).toBeLessThan(0.05)
+  })
+
   it('leaves the mic alone when the system side is silent', () => {
     const mic = pcm(voice(2, 10, 0.5))
     const out = muteEcho(mic, new Int16Array(mic.length), RATE)
